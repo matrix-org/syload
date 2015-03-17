@@ -166,7 +166,7 @@ Future->needs_all( map {
          user_id  => $user_id,
          password => $password,
       )
-   } 0 .. 1 )
+   } 0 .. 3 )
 } 0 .. $#PORTS )->get;
 
 Future->wait_all( map { $_->start } values %USERS )->get;
@@ -178,6 +178,8 @@ my $firstuser = $USERS{"u0:s0"};
 $output->start_prepare( "Creating a test room" );
 my $firstuser_room = $firstuser->create_room( "loadtest" )->get;
 $output->pass_prepare;
+
+my $room_alias = "#loadtest:localhost:$PORTS[0]";
 
 sub ratelimit
 {
@@ -267,22 +269,26 @@ sub test_this(&@)
 test_this { $firstuser->_do_GET_json( "/initialSync", limit => 0 ) }
    "/initialSync limit=0";
 
+## Test local send, no viewers
 $_->stop for values %USERS;
 
 test_this { $firstuser_room->send_message( "Hello" ) }
    "send message to local room with no viewers at all";
 
+## Test local send with myself viewing
 $_->start for values %USERS;
 
 test_this { $firstuser_room->send_message( "Hello" ) }
    "send message to local room with only myself viewing";
 
+## Test local send with other local viewers
+Future->needs_all( map { $USERS{"u$_:s0"}->join_room( $room_alias ) } 1 .. 3 )->get;
+
+test_this { $firstuser_room->send_message( "Hello" ) }
+   "send message to local room with other local viewers";
+
 # TODO:
-#   * join other local users
-#   * test sending messages
-#   * join remote users
-#   * test sending messages
+#   * test sending with remote viewers on federation
 #   * test /remotes/ sending to us
 #
 #   * consider some EDU tests - typing notif?
-
