@@ -10,12 +10,14 @@ use lib '../sytest/lib'; # reuse some control features from SyTest
 use Carp;
 
 use Future;
+use Future::Utils qw( repeat );
 use IO::Async::Loop;
 use Net::Async::HTTP;
 use Net::Async::Matrix;
 
 use Getopt::Long qw( :config no_ignore_case gnu_getopt );
 use List::Util qw( max );
+use Time::HiRes qw( time );
 
 use SyTest::Synapse;
 use SyTest::Output::Term;
@@ -167,21 +169,54 @@ Future->needs_all( map {
 
 $output->pass_prepare;
 
+my $firstuser = $USERS{"u0:s0"};
+
+$output->start_prepare( "Creating a test room" );
+my $firstuser_room = $firstuser->create_room( "loadtest" )->get;
+$output->pass_prepare;
+
+sub ratelimit
+{
+   my ( $code, $interval, $count ) = @_;
+
+   my $start = time();
+   repeat {
+      $start //= time();
+      my $exp_end = ( $start += $interval );
+
+      print "Expect $_[0] to end at $exp_end\n" if $_[0] % 10 == 0;
+
+      $code->()->then_with_f( sub {
+         my ( $f ) = @_;
+
+         my $now = time();
+         return $f if $now > $exp_end;
+
+         undef $start;
+         return $loop->delay_future( at => $exp_end );
+      });
+   } foreach => [ 1 .. $count ],
+     while => sub { not shift->failure };
+}
+
 sub test_this(&@)
 {
    my ( $code, $name, %opts ) = @_;
 
    my $t = $output->enter_multi_test( $name );
+   $t->start;
+
+   my $interval = $opts{interval} // 0.01;
 
    # presoak
-   $code->()->get for 1 .. $opts{presoak} // 50;
+   ratelimit( $code, $interval, $opts{presoak} // 50 )->get;
    $t->ok( 1, "presoaked" );
 
    my $before = fetch_metrics( $PORTS[0] )->get;
 
-   my $count = $opts{count} // 1000;
+   my $count = $opts{count} // 2000;
 
-   $code->()->get for 1 .. $count;
+   ratelimit( $code, $interval, $count )->get;
    $t->ok( 1, "tested" );
 
    my $after = fetch_metrics( $PORTS[0] )->get;
@@ -218,5 +253,18 @@ sub test_this(&@)
 ###########
 
 # TODO: some gut-wrenching here because it reaches inside the NaMatrix object
-test_this { my $u = $USERS{"u0:s0"}; $u->_do_GET_json( "/initialSync", limit => 0 ) }
+test_this { $firstuser->_do_GET_json( "/initialSync", limit => 0 ) }
    "/initialSync limit=0";
+
+test_this { $firstuser_room->send_message( "Hello" ) }
+   "send message to local room with no other viewers";
+
+# TODO:
+#   * join other local users
+#   * test sending messages
+#   * join remote users
+#   * test sending messages
+#   * test /remotes/ sending to us
+#
+#   * consider some EDU tests - typing notif?
+
