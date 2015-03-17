@@ -169,6 +169,8 @@ Future->needs_all( map {
    } 0 .. 1 )
 } 0 .. $#PORTS )->get;
 
+Future->wait_all( map { $_->start } values %USERS )->get;
+
 $output->pass_prepare;
 
 my $firstuser = $USERS{"u0:s0"};
@@ -265,8 +267,15 @@ sub test_this(&@)
 test_this { $firstuser->_do_GET_json( "/initialSync", limit => 0 ) }
    "/initialSync limit=0";
 
+$_->stop for values %USERS;
+
 test_this { $firstuser_room->send_message( "Hello" ) }
-   "send message to local room with no other viewers";
+   "send message to local room with no viewers at all";
+
+$_->start for values %USERS;
+
+test_this { $firstuser_room->send_message( "Hello" ) }
+   "send message to local room with only myself viewing";
 
 # TODO:
 #   * join other local users
