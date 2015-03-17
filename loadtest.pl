@@ -22,6 +22,8 @@ use Time::HiRes qw( time );
 use SyTest::Synapse;
 use SyTest::Output::Term;
 
+STDOUT->autoflush(1);
+
 my @SYNAPSE_EXTRA_ARGS;
 GetOptions(
    'S|server-log+' => \my $SERVER_LOG,
@@ -177,19 +179,26 @@ $output->pass_prepare;
 
 sub ratelimit
 {
-   my ( $code, $interval, $count ) = @_;
+   my ( $code, $t, $interval, $count ) = @_;
 
-   my $start = time();
+   my $countlen = length $count;
+   $t->progress( sprintf "[%*d/%d] ...", $countlen, 0, $count );
+
+   my $overall_start = my $start = time();
    repeat {
+      my ( $idx ) = @_;
+
       $start //= time();
       my $exp_end = ( $start += $interval );
 
-      print "Expect $_[0] to end at $exp_end\n" if $_[0] % 10 == 0;
-
       $code->()->then_with_f( sub {
          my ( $f ) = @_;
-
          my $now = time();
+
+         if( $idx % 20 == 0 ) {
+            $t->progress( sprintf "[%*d/%d] running at %.2f/sec", $countlen, $idx, $count, $idx / ( $now - $overall_start ) );
+         }
+
          return $f if $now > $exp_end;
 
          undef $start;
@@ -209,14 +218,14 @@ sub test_this(&@)
    my $interval = $opts{interval} // 0.01;
 
    # presoak
-   ratelimit( $code, $interval, $opts{presoak} // 50 )->get;
+   ratelimit( $code, $t, $interval, $opts{presoak} // 50 )->get;
    $t->ok( 1, "presoaked" );
 
    my $before = fetch_metrics( $PORTS[0] )->get;
 
    my $count = $opts{count} // 2000;
 
-   ratelimit( $code, $interval, $count )->get;
+   ratelimit( $code, $t, $interval, $count )->get;
    $t->ok( 1, "tested" );
 
    my $after = fetch_metrics( $PORTS[0] )->get;
