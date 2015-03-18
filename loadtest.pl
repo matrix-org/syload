@@ -258,7 +258,7 @@ sub test_this(&@)
             if time() - $last_print > 1;
       })
    }->get;
-   $t->ok( 1, "tested" );
+   $t->ok( 1, sprintf "tested [%d in %s; %.2f/sec]", $count, strfduration($duration), $count / $duration );
 
    my $after = fetch_metrics( $PORTS[0] )->get;
 
