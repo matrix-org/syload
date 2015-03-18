@@ -183,10 +183,9 @@ my $room_alias = "#loadtest:localhost:$PORTS[0]";
 
 sub ratelimit
 {
-   my ( $code, $t, $interval, $count ) = @_;
+   my ( $code, $interval, $count, $progress ) = @_;
 
-   my $countlen = length $count;
-   $t->progress( sprintf "[%*d/%d] ...", $countlen, 0, $count );
+   $progress->() if $progress;
 
    my $overall_start = my $start = time();
    repeat {
@@ -199,9 +198,7 @@ sub ratelimit
          my ( $f ) = @_;
          my $now = time();
 
-         if( $idx % 20 == 0 ) {
-            $t->progress( sprintf "[%*d/%d] running at %.2f/sec", $countlen, $idx, $count, $idx / ( $now - $overall_start ) );
-         }
+         $progress->( $idx, $now - $overall_start ) if $progress;
 
          return $f if $now > $exp_end;
 
@@ -222,14 +219,24 @@ sub test_this(&@)
    my $interval = $opts{interval} // 0.01;
 
    # presoak
-   ratelimit( $code, $t, $interval, $opts{presoak} // 50 )->get;
+   ratelimit( $code, $interval, $opts{presoak} // 50 )->get;
    $t->ok( 1, "presoaked" );
 
    my $before = fetch_metrics( $PORTS[0] )->get;
 
    my $count = $opts{count} // 2000;
 
-   ratelimit( $code, $t, $interval, $count )->get;
+   my $countlen = length $count;
+
+   ratelimit( $code, $interval, $count, sub {
+      my ( $idx, $overall_duration ) = @_;
+      if( !defined $idx ) {
+         $t->progress( sprintf "[%*d/%d] ...", $countlen, 0, $count );
+      }
+      elsif( $idx % 20 == 0 ) {
+         $t->progress( sprintf "[%*d/%d] running at %.2f/sec", $countlen, $idx, $count, $idx / $overall_duration );
+      }
+   } )->get;
    $t->ok( 1, "tested" );
 
    my $after = fetch_metrics( $PORTS[0] )->get;
