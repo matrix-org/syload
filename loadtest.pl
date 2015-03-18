@@ -209,6 +209,14 @@ sub ratelimit
      while => sub { not shift->failure };
 }
 
+sub strfduration
+{
+   my ( $d ) = @_;
+   return sprintf           "%ds", $d if $d < 60;
+   return sprintf      "%dm%02ds", $d / 60, $d % 60 if $d < 60*60;
+   return sprintf "%dh%02dm%02ds", $d / (60*60), ( $d / 60 ) % 60, $d % 60;
+}
+
 sub test_this(&@)
 {
    my ( $code, $name, %opts ) = @_;
@@ -231,7 +239,7 @@ sub test_this(&@)
    my $before = fetch_metrics( $PORTS[0] )->get;
 
    my $duration = $opts{duration} // 120;
-   my $countlen = length $duration;
+   my $countlen = length strfduration $duration;
    my $count;
    my $last_print = 0;
 
@@ -244,7 +252,9 @@ sub test_this(&@)
 
          $count = $idx, $escape->done if $overall_duration >= $duration;
 
-         $t->progress( sprintf "[%*d/%d] running at %.2f/sec (done %d)", $countlen, $overall_duration, $duration, $idx / $overall_duration, $idx ), $last_print = time()
+         $t->progress( sprintf "[%*s/%s] running at %.2f/sec (done %d)",
+               $countlen, strfduration($overall_duration), strfduration($duration), $idx / $overall_duration, $idx
+         ), $last_print = time()
             if time() - $last_print > 1;
       })
    }->get;
