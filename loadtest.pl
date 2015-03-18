@@ -10,7 +10,7 @@ use lib '../sytest/lib'; # reuse some control features from SyTest
 use Carp;
 
 use Future;
-use Future::Utils qw( repeat );
+use Future::Utils qw( repeat call_with_escape );
 use IO::Async::Loop;
 use Net::Async::HTTP;
 use Net::Async::Matrix;
@@ -183,7 +183,7 @@ my $room_alias = "#loadtest:localhost:$PORTS[0]";
 
 sub ratelimit
 {
-   my ( $code, $interval, $count, $progress ) = @_;
+   my ( $code, $interval, $progress ) = @_;
 
    $progress->() if $progress;
 
@@ -205,7 +205,7 @@ sub ratelimit
          undef $start;
          return $loop->delay_future( at => $exp_end );
       });
-   } foreach => [ 1 .. $count ],
+   } generate => do { my $idx = 0; sub { $idx++ } },
      while => sub { not shift->failure };
 }
 
@@ -218,28 +218,41 @@ sub test_this(&@)
 
    my $interval = $opts{interval} // 0.01;
 
-   # presoak
-   ratelimit( $code, $interval, $opts{presoak} // 50 )->get;
-   $t->ok( 1, "presoaked" );
+   # warmup
+   $t->progress( "Warming up..." );
+   my $warmup = $opts{warmup} // 20;
+   Future->wait_any(
+      $loop->delay_future( after => $warmup ),
+
+      ratelimit( $code, $interval ),
+   )->get;
+   $t->ok( 1, "warmed up" );
 
    my $before = fetch_metrics( $PORTS[0] )->get;
 
-   my $count = $opts{count} // 2000;
+   my $duration = $opts{duration} // 120;
+   my $countlen = length $duration;
+   my $count;
+   my $last_print = 0;
 
-   my $countlen = length $count;
+   call_with_escape {
+      my $escape = shift;
 
-   ratelimit( $code, $interval, $count, sub {
-      my ( $idx, $overall_duration ) = @_;
-      if( !defined $idx ) {
-         $t->progress( sprintf "[%*d/%d] ...", $countlen, 0, $count );
-      }
-      elsif( $idx % 20 == 0 ) {
-         $t->progress( sprintf "[%*d/%d] running at %.2f/sec", $countlen, $idx, $count, $idx / $overall_duration );
-      }
-   } )->get;
+      ratelimit( $code, $interval, sub {
+         my ( $idx, $overall_duration ) = @_;
+         return unless defined $idx;
+
+         $count = $idx, $escape->done if $overall_duration >= $duration;
+
+         $t->progress( sprintf "[%*d/%d] running at %.2f/sec (done %d)", $countlen, $overall_duration, $duration, $idx / $overall_duration, $idx ), $last_print = time()
+            if time() - $last_print > 1;
+      })
+   }->get;
    $t->ok( 1, "tested" );
 
    my $after = fetch_metrics( $PORTS[0] )->get;
+
+   # TODO: cooldown time
 
    $t->leave;
 
