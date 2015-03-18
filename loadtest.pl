@@ -16,7 +16,7 @@ use Net::Async::HTTP;
 use Net::Async::Matrix;
 
 use Getopt::Long qw( :config no_ignore_case gnu_getopt );
-use List::Util qw( max );
+use List::Util 1.29 qw( max pairgrep );
 use Time::HiRes qw( time );
 
 use SyTest::Synapse;
@@ -169,6 +169,8 @@ Future->needs_all( map {
    } 0 .. 3 )
 } 0 .. $#PORTS )->get;
 
+my %LOCAL_USERS = pairgrep { $a =~ m/:s0$/ } %USERS;
+
 Future->wait_all( map { $_->start } values %USERS )->get;
 
 $output->pass_prepare;
@@ -300,14 +302,16 @@ test_this { $firstuser->_do_GET_json( "/initialSync", limit => 0 ) }
    "/initialSync limit=0";
 
 ## Test local send, no viewers
-$_->stop for values %USERS;
+{
+   $_->stop for values %LOCAL_USERS;
 
-test_this { $firstuser_room->send_message( "Hello" ) }
-   "send message to local room with no viewers at all";
+   test_this { $firstuser_room->send_message( "Hello" ) }
+      "send message to local room with no viewers at all";
+
+   $_->start for values %LOCAL_USERS;
+}
 
 ## Test local send with myself viewing
-$_->start for values %USERS;
-
 test_this { $firstuser_room->send_message( "Hello" ) }
    "send message to local room with only myself viewing";
 
@@ -317,8 +321,29 @@ Future->needs_all( map { $USERS{"u$_:s0"}->join_room( $room_alias ) } 1 .. 3 )->
 test_this { $firstuser_room->send_message( "Hello" ) }
    "send message to local room with other local viewers";
 
+## Test local send with remote viewers over federation
+
+# Placate SYN-318
+my $firstremote_room = $USERS{"u0:s1"}->join_room( $room_alias )->get;
+Future->needs_all( map { $USERS{"u$_:s1"}->join_room( $room_alias ) } 1 .. 3 )->get;
+
+test_this { $firstuser_room->send_message( "Hello" ) }
+   "send message to local and remote users";
+
+## Test remote send over federation with local viewers
+
+test_this { $firstremote_room->send_message( "Hello" ) }
+   "receive message over federation with local and remote users";
+
+## Test remote send over federation without local viewers
+{
+   $_->stop for values %LOCAL_USERS;
+
+   test_this { $firstremote_room->send_message( "Hello" ) }
+      "receive message over federation with no local viewers";
+
+   $_->start for values %LOCAL_USERS;
+}
+
 # TODO:
-#   * test sending with remote viewers on federation
-#   * test /remotes/ sending to us
-#
 #   * consider some EDU tests - typing notif?
