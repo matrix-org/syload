@@ -327,7 +327,7 @@ test_this { $firstuser->_do_GET_json( "/initialSync", limit => 0 ) }
    test_this { $firstuser_room->send_message( "Hello" ) }
       "send message to local room with no viewers at all";
 
-   $_->start for values %LOCAL_USERS;
+   Future->needs_all( map { $_->start } values %LOCAL_USERS )->get;
 }
 
 ## Test local send with myself viewing
@@ -361,7 +361,7 @@ test_this { $firstremote_room->send_message( "Hello" ) }
    test_this { $firstremote_room->send_message( "Hello" ) }
       "receive message over federation with no local viewers";
 
-   $_->start for values %LOCAL_USERS;
+   Future->needs_all( map { $_->start } values %LOCAL_USERS )->get;
 }
 
 # TODO:
