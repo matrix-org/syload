@@ -283,8 +283,6 @@ sub test_this(&@)
 
    my $after = fetch_metrics( $PORTS[0] )->get;
 
-   # TODO: cooldown time
-
    $t->leave;
 
    my %allkeys = ( %$before, %$after );
@@ -310,6 +308,8 @@ sub test_this(&@)
          printf "   %+d\n", $delta;
       }
    }
+
+   $loop->delay_future( after => $opts{cooldown} // 10 )->get;
 }
 
 ###########
