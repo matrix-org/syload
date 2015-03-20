@@ -223,7 +223,6 @@ sub ratelimit
 
          return $f if $now > $exp_end;
 
-         undef $start;
          return $loop->delay_future( at => $exp_end );
       });
    } generate => do { my $idx = 0; sub { $idx++ } },
