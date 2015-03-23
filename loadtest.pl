@@ -316,8 +316,12 @@ sub test_this(&@)
 ###########
 
 # TODO: some gut-wrenching here because it reaches inside the NaMatrix object
-test_this { $firstuser->_do_GET_json( "/initialSync", limit => 0 ) }
-   "/initialSync limit=0";
+test_this {
+   Future->wait_any(
+      $firstuser->_do_GET_json( "/initialSync", limit => 0 ),
+      $loop->timeout_future( after => 20.0 ),
+   )
+} "/initialSync limit=0";
 
 ## Test local send, no viewers
 {
