@@ -34,6 +34,8 @@ GetOptions(
 
    'v|verbose+' => \(my $VERBOSE = 0),
 
+   'n|no-ssl' => \my $NO_SSL,
+
    'python=s' => \(my $PYTHON = "python"),
 
    'E=s' => sub { # process -Eoption=value
@@ -122,6 +124,7 @@ foreach my $idx ( 0 .. $#PORTS ) {
       print_output => $SERVER_LOG,
       extra_args   => [ "--enable-metrics", @extra_args ],
       python       => $PYTHON,
+      no_ssl       => $NO_SSL,
       ( @SERVER_FILTER ? ( filter_output => \@SERVER_FILTER ) : () ),
    );
    $loop->add( $synapse );
@@ -174,9 +177,14 @@ Future->needs_all( map {
       my $password = join "", map { chr 32 + rand 95 } 1 .. 12;
 
       my $matrix = $USERS{"$user_id:$server"} = Net::Async::Matrix->new(
-         server => $server,
-         SSL             => 1,
-         SSL_verify_mode => 0,
+         ( $NO_SSL ?
+            ( server => "localhost:@{[ $port + 1000 ]}",
+              SSL    => 0 ) :
+
+            ( server => "localhost:$port",
+              SSL             => 1,
+              SSL_verify_mode => 0, )
+         ),
       );
       $loop->add( $matrix );
       $USERS{"$user_id:s$server_id"} = $matrix;
