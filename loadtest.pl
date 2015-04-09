@@ -24,6 +24,14 @@ use SyTest::Output::Term;
 
 STDOUT->autoflush(1);
 
+# We don't actually care about local NaMatrix client functionallity, so to save
+# CPU time here from upsetting the load test too much, just blackhole all the
+# events
+{
+   no warnings 'redefine';
+   *Net::Async::Matrix::_incoming_event = sub {};
+}
+
 my @SYNAPSE_EXTRA_ARGS;
 GetOptions(
    'S|server-log+' => \my $SERVER_LOG,
