@@ -177,6 +177,9 @@ sub fetch_metrics
 
 Future->needs_all( @f )->get;
 
+# Now the synapses are started there's no need to keep watching the logfiles
+$_->close_logfile for values %synapses_by_port;
+
 my %USERS;
 
 $output->start_prepare( "Creating test users" );
