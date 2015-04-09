@@ -405,5 +405,18 @@ test_this { $firstremote_room->send_message( "Hello" ) }
    Future->needs_all( map { $_->start } values %LOCAL_USERS )->get;
 }
 
-# TODO:
-#   * consider some EDU tests - typing notif?
+test_this {
+   $firstuser->set_presence( online => "online" )
+      ->then( sub { $firstuser->set_presence( unavailable => "away" ) })
+} "send presence updates";
+
+# More gut-wrenching to perform PUT requests directly
+test_this {
+   $firstuser_room->_do_PUT_json( "/typing/$firstuser->{user_id}",
+      { typing => 1, timeout => 10_000 }
+   )->then( sub {
+      $firstuser_room->_do_PUT_json( "/typing/$firstuser->{user_id}",
+         { typing => 0 }
+      )
+   });
+} "send typing notifications";
