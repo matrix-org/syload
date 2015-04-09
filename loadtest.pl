@@ -356,10 +356,14 @@ test_this { $firstuser_room->send_message( "Hello" ) }
    "send message to local room with only myself viewing";
 
 ## Test local send with other local viewers
-Future->needs_all( map { $USERS{"u$_:s0"}->join_room( $room_alias ) } 1 .. 3 )->get;
+my @otheruser_rooms = Future->needs_all( map { $USERS{"u$_:s0"}->join_room( $room_alias ) } 1 .. 3 )->get;
+my @rooms = ( $firstuser_room, @otheruser_rooms );
 
 test_this { $firstuser_room->send_message( "Hello" ) }
    "send message to local room with other local viewers";
+
+test_this { Future->needs_all( map { $_->send_message( "Hello from $_" ) } @rooms ) }
+   "send message to from all local users to local room with other local viewers";
 
 ## Test local send with remote viewers over federation
 
