@@ -30,6 +30,8 @@ GetOptions(
    'server-grep=s' => \my @SERVER_FILTER,
    'd|synapse-directory=s' => \(my $SYNAPSE_DIR = "../synapse"),
 
+   'duration=i' => \(my $DEFAULT_DURATION = 120), # seconds
+
    'w|wait-at-end' => \my $WAIT_AT_END,
 
    'v|verbose+' => \(my $VERBOSE = 0),
@@ -276,7 +278,7 @@ sub test_this(&@)
 
    my $before = fetch_metrics( $PORTS[0] )->get;
 
-   my $duration = $opts{duration} // 120;
+   my $duration = $opts{duration} // $DEFAULT_DURATION;
    my $countlen = length strfduration $duration;
    my $count;
    my $last_print = 0;
