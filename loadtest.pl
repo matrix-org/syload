@@ -13,7 +13,7 @@ use Future;
 use Future::Utils qw( repeat call_with_escape );
 use IO::Async::Loop;
 use Net::Async::HTTP;
-use Net::Async::Matrix;
+use Net::Async::Matrix 0.17; # $room->send_message with txn_id
 
 use Getopt::Long qw( :config no_ignore_case gnu_getopt );
 use List::Util 1.29 qw( max pairgrep );
@@ -360,6 +360,16 @@ test_this {
 ## Test local send with myself viewing
 test_this { $firstuser_room->send_message( "Hello" ) }
    "send message to local room with only myself viewing";
+
+{
+   my $txn_num = 0;
+   test_this { $firstuser_room->send_message(
+         type => "m.text",
+         body => "Hello",
+         txn_id => sprintf( "syload-txn-%d", $txn_num++ ),
+      ) }
+      "send message with txn_id to local room with only myself viewing";
+}
 
 ## Test local send with other local viewers
 my @otheruser_rooms = Future->needs_all( map { $USERS{"u$_:s0"}->join_room( $room_alias ) } 1 .. 3 )->get;
