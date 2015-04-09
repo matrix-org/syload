@@ -54,6 +54,10 @@ GetOptions(
 
 push @SYNAPSE_EXTRA_ARGS, "-v" if $VERBOSE;
 
+# Bound the size of the event cache small enough for us so it won't mask other
+# memory leaks
+push @SYNAPSE_EXTRA_ARGS, "--event-cache-size" => 1024;
+
 sub usage
 {
    my ( $exitcode ) = @_;
