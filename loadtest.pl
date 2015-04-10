@@ -39,6 +39,7 @@ GetOptions(
    'd|synapse-directory=s' => \(my $SYNAPSE_DIR = "../synapse"),
 
    'duration=i' => \(my $DEFAULT_DURATION = 120), # seconds
+   'cooldown=i' => \(my $DEFAULT_COOLDOWN = 10), # seconds
 
    'w|wait-at-end' => \my $WAIT_AT_END,
 
@@ -343,7 +344,7 @@ sub test_this(&@)
       }
    }
 
-   $loop->delay_future( after => $opts{cooldown} // 10 )->get;
+   $loop->delay_future( after => $opts{cooldown} // $DEFAULT_COOLDOWN )->get;
 }
 
 ###########
