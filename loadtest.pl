@@ -112,7 +112,7 @@ my $loop = IO::Async::Loop->new;
 $loop->set_resolver(
    my $rcache = IO::Async::Resolver::StupidCache->new( source => $loop->resolver )
 );
-$loop->add( $rcache ); # placate IO::Async bug
+$loop->add( $rcache ) unless $rcache->loop; # placate IO::Async bug
 
 my %synapses_by_port;
 END {
