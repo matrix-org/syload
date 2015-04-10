@@ -22,6 +22,11 @@ use Time::HiRes qw( time );
 use SyTest::Synapse;
 use SyTest::Output::Term;
 
+use JSON::MaybeXS qw( JSON );
+unless( JSON =~ m/::XS/ ) {
+   warn "Not using an XS-based JSON parser might slow the load test down!";
+}
+
 STDOUT->autoflush(1);
 
 # We don't actually care about local NaMatrix client functionallity, so to save
