@@ -12,6 +12,7 @@ use Carp;
 use Future;
 use Future::Utils qw( repeat call_with_escape );
 use IO::Async::Loop;
+use IO::Async::Resolver::StupidCache 0.02; # without_cancel bugfix
 use Net::Async::HTTP;
 use Net::Async::Matrix 0.17; # $room->send_message with txn_id
 
@@ -105,6 +106,13 @@ EOF
 my $output = "SyTest::Output::Term";
 
 my $loop = IO::Async::Loop->new;
+
+# Cache DNS hits to avoid lots of extra resolver roundtrips to make every
+# eventstream hit in all the NaMatrix HTTP clients
+$loop->set_resolver(
+   my $rcache = IO::Async::Resolver::StupidCache->new( source => $loop->resolver )
+);
+$loop->add( $rcache ); # placate IO::Async bug
 
 my %synapses_by_port;
 END {
