@@ -126,6 +126,9 @@ sub do_MKUSERS
       );
       $loop->add( $matrix );
 
+      # Gut-wrench to turn off HTTP pipelining
+      $matrix->{ua}->configure( pipeline => 0 );
+
       $USERS[$idx] = ::User( $uid, $matrix, undef, {} );
 
       # TODO: login or register
