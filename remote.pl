@@ -55,7 +55,7 @@ use base qw( IO::Async::Stream );
 use Digest::MD5 qw( md5_base64 );
 use Future::Utils qw( fmap_void repeat );
 use List::Util qw( max );
-use Time::HiRes qw( time );
+use Time::HiRes qw( time gettimeofday tv_interval );
 
 # All of the non performance-critical handling (like creating users and rooms)
 # is done using NaMatrix
@@ -226,14 +226,14 @@ sub do_RATE
 
       my $this_msgidx = $msgidx++;
 
-      my $start = time;
+      my $start = [ gettimeofday ];
       my $send_time;
       my @recv_time;
 
       my @await_f;
       foreach my $useridx ( 0 .. $#$users ) {
          push @await_f, $users->[$useridx]->pending_f->{$this_msgidx} = Future->new
-            ->on_done( sub { $recv_time[$useridx] = time - $start } );
+            ->on_done( sub { $recv_time[$useridx] = tv_interval( $start ) } );
       }
 
       my $send_and_await_f = $sender->room->send_message(
@@ -241,7 +241,7 @@ sub do_RATE
          body => "A testing message here",
          'syload.msgidx' => $this_msgidx,
       )->then( sub {
-         $send_time = time - $start;
+         $send_time = tv_interval( $start );
 
          Future->wait_all( @await_f );
       });
@@ -253,26 +253,27 @@ sub do_RATE
          )->then( sub {
             my ( $success ) = @_;
 
+            my $sender_uid = $sender->uid;
             my $count_received = grep { defined } @recv_time;
 
             if( $success ) {
                my $recv_time = max @recv_time;
-               printf STDERR "SENT in %.3f, ALL RECV in %.3f\n",
+               printf STDERR "SENT [$sender_uid] in %.3f, ALL RECV in %.3f\n",
                   $send_time / 1000, $recv_time / 1000;
 
             }
             elsif( $count_received ) {
                my $partial_recv_time = max grep { defined } @recv_time;
 
-               printf STDERR "SENT in %.3f, SOME RECV in %.3f, %d LOST\n",
+               printf STDERR "SENT [$sender_uid] in %.3f, SOME RECV in %.3f, %d LOST\n",
                   $send_time / 1000, $partial_recv_time / 1000, scalar(@$users) - $count_received;
             }
             elsif( defined $send_time ) {
-               printf STDERR "SENT in %.3f, ALL LOST\n",
+               printf STDERR "SENT [$sender_uid] in %.3f, ALL LOST\n",
                   $send_time / 1000;
             }
             else {
-               printf STDERR "SEND TIMEOUT\n";
+               printf STDERR "SEND [$sender_uid] TIMEOUT\n";
             }
 
             # TODO: accumulate stats
