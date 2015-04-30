@@ -275,18 +275,20 @@ $output->start_prepare( "Creating test rooms" );
 do_command( "MKROOMS $TEST_PARAMS{rooms}", timeout => 30 )->get;
 $output->pass_prepare;
 
-do_command( "RATE 20" )->get;
+my $rate = 20;
+
+do_command( "RATE $rate" )->get;
 Future->wait_any(
-   $loop->delay_future( after => 30 ),
+   $loop->delay_future( after => $TEST_PARAMS{block_duration} // 30 ),
 
    repeat {
-      do_command( "STATS" )
-         ->then( sub {
-            my @stats = @_;
-            say "STATS: ", @stats;
-            $loop->delay_future( after => 5 )
-         })
+      $loop->delay_future( after => 5 )->then( sub {
+         do_command( "STATS" )
+      })->on_done( sub {
+         my @stats = @_;
+         say "STATS: ", @stats;
+      })
    } while => sub { !shift->failure }
 )->get;
-say "Final STATS: ", do_command( "STATS" )->get;
+say "Final STATS for rate=$rate: ", my @stats = do_command( "ALLSTATS" )->get;
 do_command( "RATE 0" )->get;

@@ -332,6 +332,11 @@ sub do_STATS
    my @more = sort { $a <=> $b } @{ $self->{morestats} };
    undef @{ $self->{morestats} };
 
+   my @result = (
+      "batch=${\ scalar @more }",
+      map { sprintf "p%02d=%.3f", $_, percentile( \@more, $_ ) } qw( 10 25 50 75 90 95 99 )
+   );
+
    my @stats = @{ $self->{stats} };
    my @new;
 
@@ -345,8 +350,17 @@ sub do_STATS
 
    $self->{stats} = \@new;
 
+   Future->done( @result );
+}
+
+sub do_ALLSTATS
+{
+   my $self = shift;
+
+   my $stats = $self->{stats};
+
    Future->done(
-      "total=${\ scalar @new }",
-      map { sprintf "p%02d=%.3f", $_, percentile( \@new, $_ ) } qw( 0 50 90 95 99 )
+      "total=${\ scalar @$stats }",
+      map { sprintf "p%02d=%.3f", $_, percentile( $stats, $_ ) } qw( 10 25 50 75 90 95 99 )
    );
 }
