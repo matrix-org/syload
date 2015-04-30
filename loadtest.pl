@@ -11,13 +11,14 @@ use Carp;
 
 use Future;
 use Future::Utils qw( repeat call_with_escape );
-use IO::Async::Loop;
+use IO::Async::Loop 0.66; # RT103446
 use IO::Async::Resolver::StupidCache 0.02; # without_cancel bugfix
 use Net::Async::HTTP;
-use Net::Async::Matrix 0.17; # $room->send_message with txn_id
 
+use File::Slurp qw( slurp );
 use Getopt::Long qw( :config no_ignore_case gnu_getopt );
 use List::Util 1.29 qw( max pairgrep );
+use Sys::Hostname qw( hostname );
 use Time::HiRes qw( time );
 
 use SyTest::Synapse;
@@ -30,16 +31,14 @@ unless( JSON =~ m/::XS/ ) {
 
 STDOUT->autoflush(1);
 
-# We don't actually care about local NaMatrix client functionallity, so to save
-# CPU time here from upsetting the load test too much, just blackhole all the
-# events
-{
-   no warnings 'redefine';
-   *Net::Async::Matrix::_incoming_event = sub {};
-}
+my %TEST_PARAMS = (
+   users => 20,
+   rooms =>  5,
+);
 
 my @SYNAPSE_EXTRA_ARGS;
 GetOptions(
+   'c|client-machine=s' => \my $CLIENT_MACHINE,
    'S|server-log+' => \my $SERVER_LOG,
    'server-grep=s' => \my @SERVER_FILTER,
    'd|synapse-directory=s' => \(my $SYNAPSE_DIR = "../synapse"),
@@ -66,6 +65,9 @@ GetOptions(
 
    'h|help' => sub { usage(0) },
 ) or usage(1);
+
+defined $CLIENT_MACHINE or
+   die "Need to use an external machine for running the loadtest clients on\n";
 
 push @SYNAPSE_EXTRA_ARGS, "-v" if $VERBOSE;
 
@@ -112,23 +114,14 @@ my $loop = IO::Async::Loop->new;
 $loop->set_resolver(
    my $rcache = IO::Async::Resolver::StupidCache->new( source => $loop->resolver )
 );
-$loop->add( $rcache ) unless $rcache->loop; # placate IO::Async bug
 
 my %synapses_by_port;
 END {
    $output->diag( "Killing synapse servers " ) if %synapses_by_port;
 
-   my @f;
    foreach my $synapse ( values %synapses_by_port ) {
-      if( $? ) {
-         $synapse->print_output;
-         push @f, $synapse->await_finish;
-      }
-
       $synapse->kill( 'INT' );
    }
-
-   Future->wait_all( @f )->get if @f;
 }
 $SIG{INT} = sub { exit 1 };
 
@@ -175,6 +168,11 @@ foreach my $idx ( 0 .. $#PORTS ) {
    );
 }
 
+Future->needs_all( @f )->get;
+
+# Now the synapses are started there's no need to keep watching the logfiles
+$_->close_logfile for values %synapses_by_port;
+
 my $http = Net::Async::HTTP->new(
    SSL_verify_mode => 0,
 );
@@ -197,251 +195,86 @@ sub fetch_metrics
    });
 }
 
-Future->needs_all( @f )->get;
+my @client_cmdfutures;
+my $clientctl = IO::Async::Process->new(
+   command => [ 'ssh', $CLIENT_MACHINE, 'perl', '-',
+      '--server' => hostname() . ":" . $PORTS[0],
+   ],
 
-# Now the synapses are started there's no need to keep watching the logfiles
-$_->close_logfile for values %synapses_by_port;
+   stdio => {
+      via => "pipe_rdwr",  # TODO: this ought not be necessary
+      on_read => sub {
+         my ( undef, $buffref ) = @_;
+         while( $$buffref =~ s/^(.*?)\n// ) {
+            my $line = $1;
+            ( my $cmd, $line ) = split m/\s+/, $line, 2;
 
-my %USERS;
+            if( $cmd eq "OK" ) {
+               my $f = shift @client_cmdfutures;
+               $f->done if $f;
+            }
+            elsif( $cmd eq "PROGRESS" ) {
+               print STDERR "\e[1;36m[Remote]:\e[m$line\n";
+            }
+            else {
+               warn "Incoming line $cmd $line\n";
+            }
+         }
+         return 0;
+      }
+   },
+   stderr => {
+      on_read => sub {
+         my ( undef, $buffref ) = @_;
+         print STDERR "\e[1;31m[Remote]:\e[m$1\n" while $$buffref =~ s/^(.*?)\n//;
+         return 0;
+      },
+   },
+
+   on_finish => sub {
+      my ( $self, $exitcode ) = @_;
+      return unless $exitcode;
+
+      print STDERR "Remote SSH failed - $exitcode\n";
+   },
+);
+$loop->add( $clientctl );
+END { $clientctl and $clientctl->kill( 'INT' ) }
+
+# Send program
+$clientctl->stdio->write( scalar( slurp "remote.pl" ) . "\n__END__\n" );
+
+# Wait for it to start
+Future->wait_any(
+   $clientctl->stdio->read_until( "START\n" ),
+
+   $loop->delay_future( after => 10 )
+      ->then_fail( "Timed out waiting for remote SSH control process to start" )
+)->get;
+
+sub do_command
+{
+   my ( $command, %args ) = @_;
+
+   $clientctl->stdio->write( "$command\n" );
+
+   push @client_cmdfutures, my $f = $clientctl->loop->new_future;
+   Future->wait_any(
+      $f,
+
+      $loop->delay_future( after => $args{timeout} // 10 )
+         ->then_fail( "Timed out waiting for $command to complete" )
+   )
+}
 
 $output->start_prepare( "Creating test users" );
-
-# First make some users
-Future->needs_all( map {
-   my $server_id = $_;
-
-   my $port = $PORTS[$server_id];
-   my $server = "localhost:$port";
-
-   Future->needs_all( map {
-      my $user_id = "u$_";
-      my $password = join "", map { chr 32 + rand 95 } 1 .. 12;
-
-      my $matrix = $USERS{"$user_id:$server"} = Net::Async::Matrix->new(
-         ( $NO_SSL ?
-            ( server => "localhost:@{[ $port + 1000 ]}",
-              SSL    => 0 ) :
-
-            ( server => "localhost:$port",
-              SSL             => 1,
-              SSL_verify_mode => 0, )
-         ),
-      );
-      $loop->add( $matrix );
-      $USERS{"$user_id:s$server_id"} = $matrix;
-
-      $matrix->register(
-         user_id  => $user_id,
-         password => $password,
-      )
-   } 0 .. 3 )
-} 0 .. $#PORTS )->get;
-
-my %LOCAL_USERS = pairgrep { $a =~ m/:s0$/ } %USERS;
-
-Future->wait_all( map { $_->start } values %USERS )->get;
-
+do_command( "MKUSERS $TEST_PARAMS{users}", timeout => 50 )->get;
 $output->pass_prepare;
 
-my $firstuser = $USERS{"u0:s0"};
-
-$output->start_prepare( "Creating a test room" );
-my $firstuser_room = $firstuser->create_room( "loadtest" )->get;
+$output->start_prepare( "Creating test rooms" );
+do_command( "MKROOMS $TEST_PARAMS{rooms}", timeout => 30 )->get;
 $output->pass_prepare;
 
-my $room_alias = "#loadtest:localhost:$PORTS[0]";
-
-sub ratelimit
-{
-   my ( $code, $interval, $progress ) = @_;
-
-   $progress->() if $progress;
-
-   my $overall_start = my $start = time();
-   repeat {
-      my ( $idx ) = @_;
-
-      $start //= time();
-      my $exp_end = ( $start += $interval );
-
-      $code->()->then_with_f( sub {
-         my ( $f ) = @_;
-         my $now = time();
-
-         $progress->( $idx, $now - $overall_start ) if $progress;
-
-         return $f if $now > $exp_end;
-
-         return $loop->delay_future( at => $exp_end );
-      });
-   } generate => do { my $idx = 0; sub { $idx++ } },
-     while => sub { not shift->failure };
-}
-
-sub strfduration
-{
-   my ( $d ) = @_;
-   return sprintf           "%ds", $d if $d < 60;
-   return sprintf      "%dm%02ds", $d / 60, $d % 60 if $d < 60*60;
-   return sprintf "%dh%02dm%02ds", $d / (60*60), ( $d / 60 ) % 60, $d % 60;
-}
-
-sub test_this(&@)
-{
-   my ( $code, $name, %opts ) = @_;
-
-   my $t = $output->enter_multi_test( $name );
-   $t->start;
-
-   my $interval = $opts{interval} // 0.01;
-
-   # warmup
-   $t->progress( "Warming up..." );
-   my $warmup = $opts{warmup} // 20;
-   Future->wait_any(
-      $loop->delay_future( after => $warmup ),
-
-      ratelimit( $code, $interval ),
-   )->get;
-   $t->ok( 1, "warmed up" );
-
-   my $before = fetch_metrics( $PORTS[0] )->get;
-
-   my $duration = $opts{duration} // $DEFAULT_DURATION;
-   my $countlen = length strfduration $duration;
-   my $count;
-   my $last_print = 0;
-
-   call_with_escape {
-      my $escape = shift;
-
-      ratelimit( $code, $interval, sub {
-         my ( $idx, $overall_duration ) = @_;
-         return unless defined $idx;
-
-         $count = $idx, $escape->done if $overall_duration >= $duration;
-
-         $t->progress( sprintf "[%*s/%s] running at %.2f/sec (done %d)",
-               $countlen, strfduration($overall_duration), strfduration($duration), $idx / $overall_duration, $idx
-         ), $last_print = time()
-            if time() - $last_print > 1;
-      })
-   }->get;
-   $t->ok( 1, sprintf "tested [%d in %s; %.2f/sec]", $count, strfduration($duration), $count / $duration );
-
-   my $after = fetch_metrics( $PORTS[0] )->get;
-
-   $t->leave;
-
-   my %allkeys = ( %$before, %$after );
-   my $maxkey = max( map { length } keys %allkeys );
-
-   printf "%-*s | %11s | %11s\n", $maxkey, "Metric", "Before", "After";
-   print  "-"x$maxkey . " | ----------- | -----------\n";
-
-   foreach my $key ( sort keys %allkeys ) {
-      my $was = $before->{$key};
-      my $now = $after->{$key};
-
-      next if defined $was and defined $now and $was == $now;
-
-      printf "%-*s | %11s | %11s", $maxkey, $key, $was // "--", $now // "--";
-      print("\n"), next if !defined $was or !defined $now;
-
-      my $delta = $now - $was;
-      if( $delta >= $count ) {
-         printf "   \e[1;31m%+d\e[m (%.2f /call)\n", $delta, $delta / $count;
-      }
-      else {
-         printf "   %+d\n", $delta;
-      }
-   }
-
-   $loop->delay_future( after => $opts{cooldown} // $DEFAULT_COOLDOWN )->get;
-}
-
-###########
-## Tests ##
-###########
-
-# TODO: some gut-wrenching here because it reaches inside the NaMatrix object
-test_this {
-   Future->wait_any(
-      $firstuser->_do_GET_json( "/initialSync", limit => 0 ),
-      $loop->timeout_future( after => 20.0 ),
-   )
-} "/initialSync limit=0";
-
-## Test local send, no viewers
-{
-   $_->stop for values %LOCAL_USERS;
-
-   test_this { $firstuser_room->send_message( "Hello" ) }
-      "send message to local room with no viewers at all";
-
-   Future->needs_all( map { $_->start } values %LOCAL_USERS )->get;
-}
-
-## Test local send with myself viewing
-test_this { $firstuser_room->send_message( "Hello" ) }
-   "send message to local room with only myself viewing";
-
-{
-   my $txn_num = 0;
-   test_this { $firstuser_room->send_message(
-         type => "m.text",
-         body => "Hello",
-         txn_id => sprintf( "syload-txn-%d", $txn_num++ ),
-      ) }
-      "send message with txn_id to local room with only myself viewing";
-}
-
-## Test local send with other local viewers
-my @otheruser_rooms = Future->needs_all( map { $USERS{"u$_:s0"}->join_room( $room_alias ) } 1 .. 3 )->get;
-my @rooms = ( $firstuser_room, @otheruser_rooms );
-
-test_this { $firstuser_room->send_message( "Hello" ) }
-   "send message to local room with other local viewers";
-
-test_this { Future->needs_all( map { $_->send_message( "Hello from $_" ) } @rooms ) }
-   "send message to from all local users to local room with other local viewers";
-
-## Test local send with remote viewers over federation
-
-# Placate SYN-318
-my $firstremote_room = $USERS{"u0:s1"}->join_room( $room_alias )->get;
-Future->needs_all( map { $USERS{"u$_:s1"}->join_room( $room_alias ) } 1 .. 3 )->get;
-
-test_this { $firstuser_room->send_message( "Hello" ) }
-   "send message to local and remote users";
-
-## Test remote send over federation with local viewers
-
-test_this { $firstremote_room->send_message( "Hello" ) }
-   "receive message over federation with local and remote users";
-
-## Test remote send over federation without local viewers
-{
-   $_->stop for values %LOCAL_USERS;
-
-   test_this { $firstremote_room->send_message( "Hello" ) }
-      "receive message over federation with no local viewers";
-
-   Future->needs_all( map { $_->start } values %LOCAL_USERS )->get;
-}
-
-test_this {
-   $firstuser->set_presence( online => "online" )
-      ->then( sub { $firstuser->set_presence( unavailable => "away" ) })
-} "send presence updates";
-
-# More gut-wrenching to perform PUT requests directly
-test_this {
-   $firstuser_room->_do_PUT_json( "/typing/$firstuser->{user_id}",
-      { typing => 1, timeout => 10_000 }
-   )->then( sub {
-      $firstuser_room->_do_PUT_json( "/typing/$firstuser->{user_id}",
-         { typing => 0 }
-      )
-   });
-} "send typing notifications";
+do_command( "RATE 20" )->get;
+$loop->delay_future( after => 30 )->get;
+do_command( "RATE 0" )->get;
