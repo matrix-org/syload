@@ -211,7 +211,7 @@ my $clientctl = IO::Async::Process->new(
 
             if( $cmd eq "OK" ) {
                my $f = shift @client_cmdfutures;
-               $f->done if $f;
+               $f->done( $line ) if $f;
             }
             elsif( $cmd eq "PROGRESS" ) {
                print STDERR "\e[1;36m[Remote]:\e[m$line\n";
@@ -276,5 +276,17 @@ do_command( "MKROOMS $TEST_PARAMS{rooms}", timeout => 30 )->get;
 $output->pass_prepare;
 
 do_command( "RATE 20" )->get;
-$loop->delay_future( after => 30 )->get;
+Future->wait_any(
+   $loop->delay_future( after => 30 ),
+
+   repeat {
+      do_command( "STATS" )
+         ->then( sub {
+            my @stats = @_;
+            say "STATS: ", @stats;
+            $loop->delay_future( after => 5 )
+         })
+   } while => sub { !shift->failure }
+)->get;
+say "Final STATS: ", do_command( "STATS" )->get;
 do_command( "RATE 0" )->get;

@@ -15,6 +15,7 @@ struct User => [qw( uid matrix room pending_f )];
 
 GetOptions(
    'server=s' => \my $SERVER,
+   'v+'       => \(my $VERBOSE = 0),
 ) or exit 1;
 
 # Some secret that lets us reuse user accounts from one run to the next
@@ -96,7 +97,7 @@ sub on_read_line
       return Future->fail( "Unknown command $cmd" );
 
    return $self->$code( @args )
-      ->on_done( sub { $self->write( "OK\n" ) } );
+      ->on_done( sub { $self->write( join( " ", "OK", @_ ) . "\n" ) } );
 }
 
 sub do_MKUSERS
@@ -208,6 +209,7 @@ sub do_RATE
    my ( $rate ) = @_;
 
    ( delete $self->{rate_loop} )->cancel if $self->{rate_loop};
+   delete $self->{stats};
 
    return Future->done unless $rate;
 
@@ -215,6 +217,9 @@ sub do_RATE
 
    my $msgidx = 0;
    my $roomidx = 0;
+
+   $self->{stats} = [];
+   $self->{morestats} = \my @morestats;
 
    my $t = time;
    $self->{rate_loop} = ( repeat {
@@ -259,24 +264,29 @@ sub do_RATE
             if( $success ) {
                my $recv_time = max @recv_time;
                printf STDERR "SENT [$sender_uid] in %.3f, ALL RECV in %.3f\n",
-                  $send_time / 1000, $recv_time / 1000;
+                  $send_time / 1000, $recv_time / 1000 if $VERBOSE > 1;
 
+               push @morestats, $send_time / 1000;
             }
             elsif( $count_received ) {
                my $partial_recv_time = max grep { defined } @recv_time;
 
                printf STDERR "SENT [$sender_uid] in %.3f, SOME RECV in %.3f, %d LOST\n",
-                  $send_time / 1000, $partial_recv_time / 1000, scalar(@$users) - $count_received;
+                  $send_time / 1000, $partial_recv_time / 1000, scalar(@$users) - $count_received if $VERBOSE > 1;
+
+               push @morestats, "Inf";
             }
             elsif( defined $send_time ) {
                printf STDERR "SENT [$sender_uid] in %.3f, ALL LOST\n",
-                  $send_time / 1000;
+                  $send_time / 1000 if $VERBOSE;
+
+               push @morestats, "Inf";
             }
             else {
-               printf STDERR "SEND [$sender_uid] TIMEOUT\n";
-            }
+               printf STDERR "SEND [$sender_uid] TIMEOUT\n" if $VERBOSE;
 
-            # TODO: accumulate stats
+               push @morestats, "Inf";
+            }
 
             Future->done;
          })->else( sub {
@@ -293,4 +303,40 @@ sub do_RATE
       ->on_fail( sub { die @_ } );
 
    Future->done;  # since we started OK
+}
+
+sub percentile
+{
+   my ( $arr, $pct ) = @_;
+   my $idx = scalar(@$arr) * $pct / 100;
+   my $frac = $idx - int( $idx );
+   $idx = int $idx;
+
+   return $arr->[$idx] * ( 1 - $frac ) + $arr->[1 + $idx] * $frac;
+}
+
+sub do_STATS
+{
+   my $self = shift;
+
+   my @more = sort { $a <=> $b } @{ $self->{morestats} };
+   undef @{ $self->{morestats} };
+
+   my @stats = @{ $self->{stats} };
+   my @new;
+
+   # Sorted merge
+   while( @stats and @more ) {
+      push @new, ( $stats[0] > $more[0] ) ? shift @more : shift @stats;
+   }
+
+   # Collect up whatever's left
+   push @new, @more, @stats;
+
+   $self->{stats} = \@new;
+
+   Future->done(
+      "total=${\ scalar @new }",
+      map { sprintf "p%02d=%.3f", $_, percentile( \@new, $_ ) } qw( 0 50 90 95 99 )
+   );
 }
