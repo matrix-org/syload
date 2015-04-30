@@ -15,6 +15,7 @@ struct User => [qw( uid matrix room pending_f )];
 
 GetOptions(
    'server=s' => \my $SERVER,
+   'no-ssl'   => \my $NO_SSL,
    'v+'       => \(my $VERBOSE = 0),
 ) or exit 1;
 
@@ -114,10 +115,11 @@ sub do_MKUSERS
       my $password = md5_base64( $uid . ":" . $PASSWORDKEY );
 
       my $matrix = Net::Async::Matrix->new(
-         # TODO: consider no TLS?
          server          => $SERVER,
-         SSL             => 1,
-         SSL_verify_mode => 0,
+         ( $NO_SSL ?
+            ( SSL             => 0 ) :
+            ( SSL             => 1,
+              SSL_verify_mode => 0 ) ),
 
          on_error => sub {
             my ( undef, $message ) = @_;
