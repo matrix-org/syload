@@ -248,18 +248,23 @@ sub do_RATE
          )->then( sub {
             my ( $success ) = @_;
 
+            my $count_received = grep { defined } @recv_time;
+
             if( $success ) {
                my $recv_time = max @recv_time;
                printf STDERR "SENT in %.3f, ALL RECV in %.3f\n",
                   $send_time / 1000, $recv_time / 1000;
 
             }
-            elsif( defined $send_time ) {
+            elsif( $count_received ) {
                my $partial_recv_time = max grep { defined } @recv_time;
-               my $count_received = grep { defined } @recv_time;
 
                printf STDERR "SENT in %.3f, SOME RECV in %.3f, %d LOST\n",
                   $send_time / 1000, $partial_recv_time / 1000, scalar(@$users) - $count_received;
+            }
+            elsif( defined $send_time ) {
+               printf STDERR "SENT in %.3f, ALL LOST\n",
+                  $send_time / 1000;
             }
             else {
                printf STDERR "SEND TIMEOUT\n";
