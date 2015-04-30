@@ -313,11 +313,16 @@ sub do_RATE
 sub percentile
 {
    my ( $arr, $pct ) = @_;
-   my $idx = scalar(@$arr) * $pct / 100;
+   my $idx = $#$arr * $pct / 100;
    my $frac = $idx - int( $idx );
    $idx = int $idx;
 
-   return $arr->[$idx] * ( 1 - $frac ) + $arr->[1 + $idx] * $frac;
+   if( $idx < $#$arr ) {
+      return $arr->[$idx] * ( 1 - $frac ) + $arr->[1 + $idx] * $frac;
+   }
+   else {
+      return $arr->[$idx];
+   }
 }
 
 sub do_STATS
