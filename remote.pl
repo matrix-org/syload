@@ -117,6 +117,11 @@ sub do_MKUSERS
          server          => $SERVER,
          SSL             => 1,
          SSL_verify_mode => 0,
+
+         on_error => sub {
+            my ( undef, $message ) = @_;
+            print STDERR "NaMatrix for $uid failed: $message\n";
+         },
       );
       $loop->add( $matrix );
 
