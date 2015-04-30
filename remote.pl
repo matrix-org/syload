@@ -269,21 +269,21 @@ sub do_RATE
             if( $success ) {
                my $recv_time = max @recv_time;
                printf STDERR "SENT [$sender_uid] in %.3f, ALL RECV in %.3f\n",
-                  $send_time / 1000, $recv_time / 1000 if $VERBOSE > 1;
+                  $send_time, $recv_time if $VERBOSE > 1;
 
-               push @morestats, $send_time / 1000;
+               push @morestats, max( $send_time, $recv_time );
             }
             elsif( $count_received ) {
                my $partial_recv_time = max grep { defined } @recv_time;
 
                printf STDERR "SENT [$sender_uid] in %.3f, SOME RECV in %.3f, %d LOST\n",
-                  $send_time / 1000, $partial_recv_time / 1000, scalar(@$users) - $count_received if $VERBOSE > 1;
+                  $send_time, $partial_recv_time, scalar(@$users) - $count_received if $VERBOSE > 1;
 
                push @morestats, "Inf";
             }
             elsif( defined $send_time ) {
                printf STDERR "SENT [$sender_uid] in %.3f, ALL LOST\n",
-                  $send_time / 1000 if $VERBOSE;
+                  $send_time if $VERBOSE;
 
                push @morestats, "Inf";
             }
