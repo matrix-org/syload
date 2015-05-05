@@ -3,6 +3,7 @@
 use strict;
 use warnings;
 use 5.014; # package NAME { BLOCK }
+use feature qw( switch );
 
 use lib 'lib';
 use lib '../sytest/lib'; # reuse some control features from SyTest
@@ -65,6 +66,8 @@ GetOptions(
       push @SYNAPSE_EXTRA_ARGS, @more;
    },
 
+   'output|o=s' => \(my $OUTPUT_PATH),
+
    'h|help' => sub { usage(0) },
 ) or usage(1);
 
@@ -104,6 +107,37 @@ EOF
 }
 
 my $output = "SyTest::Output::Term";
+
+my $OUTPUT;
+if( defined $OUTPUT_PATH ) {
+   my $outfh;
+   given( $OUTPUT_PATH ) {
+      when( m/\.csv$/ ) {
+         my $isfirst = 1;
+         my $cumulative_total = 0;
+         $OUTPUT = sub {
+            my ( $batch, @buckets ) = split m/\s+/, $_[0];
+            if( $isfirst ) {
+               # column headings
+               my @names = map { ( m/^(.*?)=/ )[0] } @buckets;
+               $outfh->print( "# ", join( ", ", "total", "batch", @names ), "\n" );
+
+               undef $isfirst;
+            }
+
+            $_ = ( m/=(.*)/ )[0] for $batch, @buckets;
+
+            $cumulative_total += $batch;
+            $outfh->print( join( ", ", $cumulative_total, $batch, @buckets ), "\n" );
+         };
+      }
+      default {
+         die "Unsure how to output to a file called $OUTPUT_PATH\n";
+      }
+   }
+
+   open $outfh, ">", $OUTPUT_PATH or die "Cannot open $OUTPUT_PATH for writing - $!\n";
+}
 
 my $loop = IO::Async::Loop->new;
 
@@ -288,9 +322,14 @@ Future->wait_any(
          do_command( "STATS" )
       })->on_done( sub {
          my @stats = @_;
+         $OUTPUT->( @stats );
          say "STATS: ", @stats;
       })
    } while => sub { !shift->failure }
 )->get;
-say "Final STATS for rate=$rate: ", my @stats = do_command( "ALLSTATS" )->get;
+
 do_command( "RATE 0" )->get;
+
+$OUTPUT->( do_command( "STATS" )->get );
+
+say "Final STATS for rate=$rate: ", do_command( "ALLSTATS" )->get;

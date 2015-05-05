@@ -214,7 +214,6 @@ sub do_RATE
    my ( $rate ) = @_;
 
    ( delete $self->{rate_loop} )->cancel if $self->{rate_loop};
-   delete $self->{stats};
 
    return Future->done unless $rate;
 
