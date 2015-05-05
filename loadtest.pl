@@ -34,6 +34,8 @@ STDOUT->autoflush(1);
 my %TEST_PARAMS = (
    users => 20,
    rooms =>  5,
+
+   duration => 120,  # seconds
 );
 
 my @SYNAPSE_EXTRA_ARGS;
@@ -43,7 +45,7 @@ GetOptions(
    'server-grep=s' => \my @SERVER_FILTER,
    'd|synapse-directory=s' => \(my $SYNAPSE_DIR = "../synapse"),
 
-   'duration=i' => \(my $DEFAULT_DURATION = 120), # seconds
+   'duration=i' => \$TEST_PARAMS{duration},
    'cooldown=i' => \(my $DEFAULT_COOLDOWN = 10), # seconds
 
    'w|wait-at-end' => \my $WAIT_AT_END,
@@ -279,7 +281,7 @@ my $rate = 20;
 
 do_command( "RATE $rate" )->get;
 Future->wait_any(
-   $loop->delay_future( after => $TEST_PARAMS{block_duration} // 30 ),
+   $loop->delay_future( after => $TEST_PARAMS{duration} ),
 
    repeat {
       $loop->delay_future( after => 5 )->then( sub {
