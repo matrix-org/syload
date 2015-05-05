@@ -71,10 +71,6 @@ defined $CLIENT_MACHINE or
 
 push @SYNAPSE_EXTRA_ARGS, "-v" if $VERBOSE;
 
-# Bound the size of the event cache small enough for us so it won't mask other
-# memory leaks
-push @SYNAPSE_EXTRA_ARGS, "--event-cache-size" => 1024;
-
 sub usage
 {
    my ( $exitcode ) = @_;
@@ -153,7 +149,7 @@ foreach my $idx ( 0 .. $#PORTS ) {
       port         => $port,
       output       => $output,
       print_output => $SERVER_LOG,
-      extra_args   => [ "--enable-metrics", @extra_args ],
+      extra_args   => [ @extra_args ],
       python       => $PYTHON,
       no_ssl       => $NO_SSL,
       ( @SERVER_FILTER ? ( filter_output => \@SERVER_FILTER ) : () ),
@@ -182,6 +178,8 @@ sub fetch_metrics
 {
    my ( $port ) = @_;
 
+   ## TODO: This will require --enable-metrics to be passed to synapse, but
+   #    as of 7b50769 it no longer takes this on the commandline.
    $http->GET( "https://localhost:$port/_synapse/metrics" )->then( sub {
       my ( $response ) = @_;
 
