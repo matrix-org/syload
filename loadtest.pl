@@ -323,7 +323,7 @@ Future->wait_any(
          do_command( "STATS" )
       })->on_done( sub {
          my @stats = @_;
-         $OUTPUT->( @stats );
+         $OUTPUT->( @stats ) if $OUTPUT;
          say "STATS: ", @stats;
       })
    } while => sub { !shift->failure }
@@ -331,6 +331,6 @@ Future->wait_any(
 
 do_command( "RATE 0" )->get;
 
-$OUTPUT->( do_command( "STATS" )->get );
+$OUTPUT->( do_command( "STATS" )->get ) if $OUTPUT;
 
 say "Final STATS for rate=$TEST_PARAMS{rate}: ", do_command( "ALLSTATS" )->get;
