@@ -316,19 +316,42 @@ do_command( "MKROOMS $TEST_PARAMS{rooms}", timeout => 30 )->get;
 $output->pass_prepare;
 
 do_command( "RATE $TEST_PARAMS{rate}" )->get;
+
+my $failcount = 0;
 Future->wait_any(
    $loop->delay_future( after => $TEST_PARAMS{duration} ),
 
    repeat {
       $loop->delay_future( after => 5 )->then( sub {
          do_command( "STATS" )
-      })->on_done( sub {
-         my @stats = @_;
-         $OUTPUT->( @stats ) if $OUTPUT;
-         say "STATS: ", @stats;
+      })->then( sub {
+         my ( $stats ) = @_;
+         $OUTPUT->( $stats ) if $OUTPUT;
+         say "STATS: ", $stats;
+
+         my %percentiles = map { m/^p(.*?)=(.*)$/ ? ( $1, $2 ) : () } split m/\s+/, $stats;
+
+         if( $percentiles{10} <= 1.0 ) {   ## also handles NaN
+            $failcount = 0;
+         }
+         else {
+            $failcount++;
+         }
+
+         return Future->fail( "E2E latency above 1000msec at p10 for 30sec; stopping test", ABORT => )
+            if $failcount >= 6;
+
+         Future->done;
       })
    } while => sub { !shift->failure }
-)->get;
+)->else_with_f( sub {
+   my ( $f, $message, $name ) = @_;
+   if( $name and $name eq "ABORT" ) {
+      say $message;
+      return Future->done;
+   }
+   return $f;
+})->get;
 
 do_command( "RATE 0" )->get;
 
