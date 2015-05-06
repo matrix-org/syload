@@ -36,6 +36,7 @@ my %TEST_PARAMS = (
    users => 20,
    rooms =>  5,
 
+   rate => 5,  # msg/sec
    duration => 120,  # seconds
 );
 
@@ -46,6 +47,7 @@ GetOptions(
    'server-grep=s' => \my @SERVER_FILTER,
    'd|synapse-directory=s' => \(my $SYNAPSE_DIR = "../synapse"),
 
+   'rate=f' => \$TEST_PARAMS{rate},
    'duration=i' => \$TEST_PARAMS{duration},
    'cooldown=i' => \(my $DEFAULT_COOLDOWN = 10), # seconds
 
@@ -311,9 +313,7 @@ $output->start_prepare( "Creating test rooms" );
 do_command( "MKROOMS $TEST_PARAMS{rooms}", timeout => 30 )->get;
 $output->pass_prepare;
 
-my $rate = 20;
-
-do_command( "RATE $rate" )->get;
+do_command( "RATE $TEST_PARAMS{rate}" )->get;
 Future->wait_any(
    $loop->delay_future( after => $TEST_PARAMS{duration} ),
 
@@ -332,4 +332,4 @@ do_command( "RATE 0" )->get;
 
 $OUTPUT->( do_command( "STATS" )->get );
 
-say "Final STATS for rate=$rate: ", do_command( "ALLSTATS" )->get;
+say "Final STATS for rate=$TEST_PARAMS{rate}: ", do_command( "ALLSTATS" )->get;
