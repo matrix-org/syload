@@ -47,7 +47,8 @@ GetOptions(
    'server-grep=s' => \my @SERVER_FILTER,
    'd|synapse-directory=s' => \(my $SYNAPSE_DIR = "../synapse"),
 
-   'rate=f' => \$TEST_PARAMS{rate},
+   'k|rooms=i'  => \$TEST_PARAMS{rooms},
+   'rate=f'     => \$TEST_PARAMS{rate},
    'duration=i' => \$TEST_PARAMS{duration},
    'cooldown=i' => \(my $DEFAULT_COOLDOWN = 10), # seconds
 
