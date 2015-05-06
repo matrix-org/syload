@@ -115,7 +115,8 @@ my $OUTPUT;
 if( defined $OUTPUT_PATH ) {
    my $outfh;
    given( $OUTPUT_PATH ) {
-      when( m/\.csv$/ ) {
+      when( [ qr/\.csv$/, qr/\.dat$/ ] ) {
+         my $sep = ( $OUTPUT_PATH =~ m/\.csv$/ ) ? ", " : " ";
          my $isfirst = 1;
          my $cumulative_total = 0;
          $OUTPUT = sub {
@@ -123,7 +124,7 @@ if( defined $OUTPUT_PATH ) {
             if( $isfirst ) {
                # column headings
                my @names = map { ( m/^(.*?)=/ )[0] } @buckets;
-               $outfh->print( "# ", join( ", ", "total", "batch", @names ), "\n" );
+               $outfh->print( "# ", join( $sep, "total", "batch", @names ), "\n" );
 
                undef $isfirst;
             }
@@ -131,7 +132,7 @@ if( defined $OUTPUT_PATH ) {
             $_ = ( m/=(.*)/ )[0] for $batch, @buckets;
 
             $cumulative_total += $batch;
-            $outfh->print( join( ", ", $cumulative_total, $batch, @buckets ), "\n" );
+            $outfh->print( join( $sep, $cumulative_total, $batch, @buckets ), "\n" );
          };
       }
       default {
