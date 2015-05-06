@@ -3,25 +3,40 @@
 use strict;
 use warnings;
 
+use Getopt::Long;
+
 my $file = shift @ARGV;
+
+GetOptions(
+   'm|messages' => \my $AGAINST_MESSAGES,
+) or exit 1;
 
 open my $pipeh, "|-", "gnuplot", "--persist" or
    die "Cannot popen gnuplot - $!";
 
-my @plots = (
-   ' using 1:3 title "p10" with line',
-   ' using 1:4 title "p25" with line',
-   ' using 1:5 title "p50" with line linewidth 2',
-   ' using 1:6 title "p75" with line',
-   ' using 1:7 title "p90" with line',
-);
-
-my $PLOTS = join( ", ", map { qq("$file"$_) } @plots );
-
 print $pipeh <<"EOF";
 set title "$file"
-set xlabel "Messages"
 set ylabel "Latency, seconds"
 
-plot $PLOTS
 EOF
+
+my @plots = (
+   '4 title "p10" with line',
+   '5 title "p25" with line',
+   '6 title "p50" with line linewidth 2',
+   '7 title "p75" with line',
+   '8 title "p90" with line',
+);
+
+my $xcolumn = $AGAINST_MESSAGES ? "2" : "1";
+
+my $PLOTS = join( ", ", map { qq("$file" using ${xcolumn}:$_) } @plots );
+
+if( $AGAINST_MESSAGES ) {
+   print $pipeh qq(set xlabel "Messages"\n);
+}
+else {
+   print $pipeh qq(set xlabel "Time, seconds"\nset xtics 60\n);
+}
+
+print $pipeh "plot $PLOTS\n";

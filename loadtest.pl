@@ -121,10 +121,12 @@ if( defined $OUTPUT_PATH ) {
          my $cumulative_total = 0;
          $OUTPUT = sub {
             my ( $batch, @buckets ) = split m/\s+/, $_[0];
+            my $time = $_[1];
+
             if( $isfirst ) {
                # column headings
                my @names = map { ( m/^(.*?)=/ )[0] } @buckets;
-               $outfh->print( "# ", join( $sep, "total", "batch", @names ), "\n" );
+               $outfh->print( "# ", join( $sep, "time", "total", "batch", @names ), "\n" );
 
                undef $isfirst;
             }
@@ -132,7 +134,7 @@ if( defined $OUTPUT_PATH ) {
             $_ = ( m/=(.*)/ )[0] for $batch, @buckets;
 
             $cumulative_total += $batch;
-            $outfh->print( join( $sep, $cumulative_total, $batch, @buckets ), "\n" );
+            $outfh->print( join( $sep, $time, $cumulative_total, $batch, @buckets ), "\n" );
          };
       }
       default {
@@ -317,6 +319,7 @@ $output->pass_prepare;
 
 do_command( "RATE $TEST_PARAMS{rate}" )->get;
 
+my $start = time;
 my $failcount = 0;
 Future->wait_any(
    $loop->delay_future( after => $TEST_PARAMS{duration} ),
@@ -326,7 +329,7 @@ Future->wait_any(
          do_command( "STATS" )
       })->then( sub {
          my ( $stats ) = @_;
-         $OUTPUT->( $stats ) if $OUTPUT;
+         $OUTPUT->( $stats, time - $start ) if $OUTPUT;
          say "STATS: ", $stats;
 
          my %percentiles = map { m/^p(.*?)=(.*)$/ ? ( $1, $2 ) : () } split m/\s+/, $stats;
@@ -355,6 +358,6 @@ Future->wait_any(
 
 do_command( "RATE 0" )->get;
 
-$OUTPUT->( do_command( "STATS" )->get ) if $OUTPUT;
+$OUTPUT->( do_command( "STATS" )->get, time - $start ) if $OUTPUT;
 
 say "Final STATS for rate=$TEST_PARAMS{rate}: ", do_command( "ALLSTATS" )->get;
