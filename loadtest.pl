@@ -38,6 +38,8 @@ my %TEST_PARAMS = (
 
    rate => 5,  # msg/sec
    duration => 120,  # seconds
+
+   stat_interval => 5,  # seconds
 );
 
 my @SYNAPSE_EXTRA_ARGS;
@@ -51,6 +53,7 @@ GetOptions(
    'rate=f'     => \$TEST_PARAMS{rate},
    'duration=i' => \$TEST_PARAMS{duration},
    'cooldown=i' => \(my $DEFAULT_COOLDOWN = 10), # seconds
+   'stat-interval=i' => \$TEST_PARAMS{stat_interval},
 
    'w|wait-at-end' => \my $WAIT_AT_END,
 
@@ -326,7 +329,7 @@ Future->wait_any(
    $loop->delay_future( after => $TEST_PARAMS{duration} ),
 
    repeat {
-      $loop->delay_future( after => 5 )->then( sub {
+      $loop->delay_future( after => $TEST_PARAMS{stat_interval} )->then( sub {
          do_command( "STATS" )
       })->then( sub {
          my ( $stats ) = @_;
