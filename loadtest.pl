@@ -49,6 +49,7 @@ GetOptions(
    'server-grep=s' => \my @SERVER_FILTER,
    'd|synapse-directory=s' => \(my $SYNAPSE_DIR = "../synapse"),
 
+   'u|users=i'  => \$TEST_PARAMS{users},
    'k|rooms=i'  => \$TEST_PARAMS{rooms},
    'rate=f'     => \$TEST_PARAMS{rate},
    'duration=i' => \$TEST_PARAMS{duration},
