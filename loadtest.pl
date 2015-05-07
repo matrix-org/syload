@@ -240,10 +240,14 @@ sub fetch_metrics
    });
 }
 
+# If we're running the clients on "localhost" then just telling them to connect
+# back to "localhost" is fine; anything else we'd better pick our own name.
+my $servername = ( $CLIENT_MACHINE eq "localhost" ) ? "localhost" : hostname();
+
 my @client_cmdfutures;
 my $clientctl = IO::Async::Process->new(
    command => [ 'ssh', $CLIENT_MACHINE, 'perl', '-',
-      '--server' => hostname() . ":" . ( $PORTS[0] + ( $NO_SSL ? 1000 : 0 ) ),
+      '--server' => $servername . ":" . ( $PORTS[0] + ( $NO_SSL ? 1000 : 0 ) ),
       ( $NO_SSL ? ( "--no-ssl" ) : () ),
       # '-v',
    ],
