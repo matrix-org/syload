@@ -34,7 +34,7 @@ STDOUT->autoflush(1);
 
 my %TEST_PARAMS = (
    users => 20,
-   rooms =>  5,
+   rooms => 20,
 
    rate => 5,  # msg/sec
    duration => 120,  # seconds
