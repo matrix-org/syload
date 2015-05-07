@@ -180,8 +180,8 @@ sub extract_extra_args
    } @$args;
 }
 
-# We need two servers; a "local" and a "remote" one for federation-based tests
-my @PORTS = ( 8001, 8002 );
+# In case we ever want to do some "remote" federation-based load injection, add more ports here
+my @PORTS = ( 8001 );
 my @f;
 foreach my $idx ( 0 .. $#PORTS ) {
    my $port = $PORTS[$idx];
