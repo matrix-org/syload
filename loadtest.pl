@@ -143,6 +143,7 @@ if( defined $OUTPUT_PATH ) {
    }
 
    open $outfh, ">", $OUTPUT_PATH or die "Cannot open $OUTPUT_PATH for writing - $!\n";
+   $outfh->autoflush(1);
 }
 
 my $loop = IO::Async::Loop->new;
