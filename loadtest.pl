@@ -243,7 +243,7 @@ sub fetch_metrics
 my @client_cmdfutures;
 my $clientctl = IO::Async::Process->new(
    command => [ 'ssh', $CLIENT_MACHINE, 'perl', '-',
-      '--server' => hostname() . ":" . ( $PORTS[0] + ( $NO_SSL ? 100 : 0 ) ),
+      '--server' => hostname() . ":" . ( $PORTS[0] + ( $NO_SSL ? 1000 : 0 ) ),
       ( $NO_SSL ? ( "--no-ssl" ) : () ),
       # '-v',
    ],
