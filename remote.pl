@@ -4,6 +4,8 @@
 use strict;
 use warnings;
 
+use BSD::Resource qw( getrlimit setrlimit RLIMIT_NOFILE );
+
 use IO::Async::Loop 0.66; # RT103446
 use IO::Async::Resolver::StupidCache;
 use IO::Async::Stream;
@@ -31,6 +33,13 @@ use Heap;
 use JSON::MaybeXS qw( JSON );
 unless( JSON =~ m/::XS/ ) {
    warn "Not using an XS-based JSON parser might slow the load test down!";
+}
+
+# We're going to need a lot of filehandles
+{
+   my ( undef, $hardlimit ) = getrlimit( RLIMIT_NOFILE );
+   setrlimit( RLIMIT_NOFILE, $hardlimit, $hardlimit ) or
+      warn "Could not raise RLIMIT_NOFILE to $hardlimit - $!";
 }
 
 my $loop = IO::Async::Loop->new;
