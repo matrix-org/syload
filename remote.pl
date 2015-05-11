@@ -118,7 +118,9 @@ sub do_MKUSERS
    # First drop all the existing users
    # TODO
 
-   fmap_void {
+   # Create users WITHOUT eventstreams then start them
+
+   my $create_f = fmap_void {
       my ( $idx ) = @_;
       my $uid = sprintf "u%06d", $idx;
       my $password = md5_base64( $uid . ":" . $PASSWORDKEY );
@@ -146,13 +148,22 @@ sub do_MKUSERS
       $matrix->register(
          user_id => $uid,
          password => $password,
-      )->then( sub {
-         $matrix->start;
-      })->on_done( sub {
+      )->on_done( sub {
+         $matrix->stop;
          $self->progress( "Created $uid" )
       });
    } foreach => [ 0 .. $count-1 ],
      concurrent => 10;
+
+   $create_f->then( sub {
+      fmap_void {
+         my $user = shift;
+
+         $self->progress( "Starting ${\ $user->uid } eventstream" );
+         $user->matrix->start;
+      } foreach => [ @USERS ],
+        concurrent => 10;
+   });
 }
 
 sub do_MKROOMS
