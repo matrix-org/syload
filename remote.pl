@@ -4,6 +4,11 @@
 use strict;
 use warnings;
 
+BEGIN {
+   my $homelib = "$ENV{HOME}/lib/perl5";
+   unshift @INC, $homelib if -d $homelib;
+}
+
 use BSD::Resource qw( getrlimit setrlimit RLIMIT_NOFILE );
 
 use IO::Async::Loop 0.66; # RT103446
