@@ -326,6 +326,11 @@ $output->start_prepare( "Creating test rooms" );
 do_command( "MKROOMS $TEST_PARAMS{rooms}", timeout => 30 )->get;
 $output->pass_prepare;
 
+$output->start_prepare( "Warming up" );
+do_command( "RATE 1" )->get;
+$loop->delay_future( after => 60 )->get;
+$output->pass_prepare;
+
 do_command( "RATE $TEST_PARAMS{rate}" )->get;
 
 my $start = time;
