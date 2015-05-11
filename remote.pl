@@ -197,14 +197,14 @@ sub do_MKROOMS
          $ROOMIDS[$idx] = $room->room_id;
          $self->progress( "Created room[$idx]" );
 
-         Future->needs_all( map {
-            my $user = $_;
+         ( repeat {
+            my $user = shift;
 
             $user->matrix->join_room( $room->room_id )->on_done( sub {
                my ( $room ) = @_;
                $user->room = $room;
             });
-         } @joiners )->on_done( sub {
+         } foreach => [ @joiners ] )->on_done( sub {
             $USERS_BY_ROOMID{ $room->room_id } = [ $creator, @joiners ];
 
             foreach my $user ( @users ) {
