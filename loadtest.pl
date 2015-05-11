@@ -40,6 +40,8 @@ my %TEST_PARAMS = (
    duration => 120,  # seconds
 
    stat_interval => 5,  # seconds
+
+   warmup => "1:60",  # rate:duration,...
 );
 
 my @SYNAPSE_EXTRA_ARGS;
@@ -56,7 +58,7 @@ GetOptions(
    'cooldown=i' => \(my $DEFAULT_COOLDOWN = 10), # seconds
    'stat-interval=i' => \$TEST_PARAMS{stat_interval},
 
-   'w|wait-at-end' => \my $WAIT_AT_END,
+   'w|warmup=s' => \$TEST_PARAMS{warmup},
 
    'v|verbose+' => \(my $VERBOSE = 0),
 
@@ -327,8 +329,15 @@ do_command( "MKROOMS $TEST_PARAMS{rooms}", timeout => 30 )->get;
 $output->pass_prepare;
 
 $output->start_prepare( "Warming up" );
-do_command( "RATE 1" )->get;
-$loop->delay_future( after => 60 )->get;
+( repeat {
+   my ( $rate, $duration ) = split m/:/, shift;
+
+   # TODO: write some output to the terminal so the user doesn't get bored
+
+   do_command( "RATE $rate" )->then( sub {
+      $loop->delay_future( after => $duration )
+   })
+} foreach => [ split m/,/, $TEST_PARAMS{warmup} ] )->get;
 $output->pass_prepare;
 
 do_command( "RATE $TEST_PARAMS{rate}" )->get;
