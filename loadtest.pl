@@ -23,7 +23,6 @@ use Sys::Hostname qw( hostname );
 use Time::HiRes qw( time );
 
 use SyTest::Synapse;
-use SyTest::Output::Term;
 
 use JSON::MaybeXS qw( JSON );
 unless( JSON =~ m/::XS/ ) {
@@ -115,7 +114,12 @@ EOF
    exit $exitcode;
 }
 
-my $output = "SyTest::Output::Term";
+# Largely to keep SyTest::Synapse happy
+my $logger = bless {}, "SyLoad::Logger";
+package SyLoad::Logger {
+   sub diag { shift; print STDERR @_, "\n"; }
+   sub progress { shift; print STDERR "\e[36m", @_, "\e[m\n"; }
+}
 
 my $OUTPUT;
 if( defined $OUTPUT_PATH ) {
@@ -162,7 +166,7 @@ $loop->set_resolver(
 
 my %synapses_by_port;
 END {
-   $output->diag( "Killing synapse servers " ) if %synapses_by_port;
+   $logger->diag( "Killing synapse servers " ) if %synapses_by_port;
 
    foreach my $synapse ( values %synapses_by_port ) {
       $synapse->kill( 'INT' );
@@ -196,7 +200,7 @@ foreach my $idx ( 0 .. $#PORTS ) {
    my $synapse = $synapses_by_port{$port} = SyTest::Synapse->new(
       synapse_dir  => $SYNAPSE_DIR,
       port         => $port,
-      output       => $output,
+      output       => $logger,
       print_output => $SERVER_LOG,
       extra_args   => [ @extra_args ],
       python       => $PYTHON,
@@ -320,15 +324,13 @@ sub do_command
    )
 }
 
-$output->start_prepare( "Creating test users" );
+$logger->progress( "Creating test users" );
 do_command( "MKUSERS $TEST_PARAMS{users}", timeout => 50 )->get;
-$output->pass_prepare;
 
-$output->start_prepare( "Creating test rooms" );
+$logger->progress( "Creating test rooms" );
 do_command( "MKROOMS $TEST_PARAMS{rooms}", timeout => 30 )->get;
-$output->pass_prepare;
 
-$output->start_prepare( "Warming up" );
+$logger->progress( "Warming up" );
 ( repeat {
    my ( $rate, $duration ) = split m/:/, shift;
 
@@ -338,8 +340,8 @@ $output->start_prepare( "Warming up" );
       $loop->delay_future( after => $duration )
    })
 } foreach => [ split m/,/, $TEST_PARAMS{warmup} ] )->get;
-$output->pass_prepare;
 
+$logger->progress( "Testing" );
 do_command( "RATE $TEST_PARAMS{rate}" )->get;
 
 my $start = time;
