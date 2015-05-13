@@ -3,7 +3,6 @@
 use strict;
 use warnings;
 use 5.014; # package NAME { BLOCK }
-use feature qw( switch );
 
 use lib 'lib';
 use lib '../sytest/lib'; # reuse some control features from SyTest
@@ -22,6 +21,7 @@ use List::Util 1.29 qw( max pairgrep );
 use Sys::Hostname qw( hostname );
 use Time::HiRes qw( time );
 
+use SyLoad::Output;
 use SyTest::Synapse;
 
 use JSON::MaybeXS qw( JSON );
@@ -122,39 +122,7 @@ package SyLoad::Logger {
 }
 
 my $OUTPUT;
-if( defined $OUTPUT_PATH ) {
-   my $outfh;
-   given( $OUTPUT_PATH ) {
-      when( [ qr/\.csv$/, qr/\.dat$/ ] ) {
-         my $sep = ( $OUTPUT_PATH =~ m/\.csv$/ ) ? ", " : " ";
-         my $isfirst = 1;
-         my $cumulative_total = 0;
-         $OUTPUT = sub {
-            my ( $batch, @buckets ) = split m/\s+/, $_[0];
-            my $time = $_[1];
-
-            if( $isfirst ) {
-               # column headings
-               my @names = map { ( m/^(.*?)=/ )[0] } @buckets;
-               $outfh->print( "# ", join( $sep, "time", "total", "batch", @names ), "\n" );
-
-               undef $isfirst;
-            }
-
-            $_ = ( m/=(.*)/ )[0] for $batch, @buckets;
-
-            $cumulative_total += $batch;
-            $outfh->print( join( $sep, $time, $cumulative_total, $batch, @buckets ), "\n" );
-         };
-      }
-      default {
-         die "Unsure how to output to a file called $OUTPUT_PATH\n";
-      }
-   }
-
-   open $outfh, ">", $OUTPUT_PATH or die "Cannot open $OUTPUT_PATH for writing - $!\n";
-   $outfh->autoflush(1);
-}
+$OUTPUT = SyLoad::Output->open( $OUTPUT_PATH ) if defined $OUTPUT_PATH;
 
 my $loop = IO::Async::Loop->new;
 
@@ -354,7 +322,7 @@ Future->wait_any(
          do_command( "STATS" )
       })->then( sub {
          my ( $stats ) = @_;
-         $OUTPUT->( $stats, time - $start ) if $OUTPUT;
+         $OUTPUT->write( $stats, time - $start ) if $OUTPUT;
          say "STATS: ", $stats;
 
          my %percentiles = map { m/^p(.*?)=(.*)$/ ? ( $1, $2 ) : () } split m/\s+/, $stats;
@@ -383,6 +351,6 @@ Future->wait_any(
 
 do_command( "RATE 0" )->get;
 
-$OUTPUT->( do_command( "STATS" )->get, time - $start ) if $OUTPUT;
+$OUTPUT->write( do_command( "STATS" )->get, time - $start ) if $OUTPUT;
 
 say "Final STATS for rate=$TEST_PARAMS{rate}: ", do_command( "ALLSTATS" )->get;
