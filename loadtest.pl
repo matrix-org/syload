@@ -15,6 +15,7 @@ use IO::Async::Loop 0.66; # RT103446
 use IO::Async::Resolver::StupidCache 0.02; # without_cancel bugfix
 use Net::Async::HTTP;
 
+use File::Path qw( make_path );
 use File::Slurp qw( slurp );
 use Getopt::Long qw( :config no_ignore_case gnu_getopt );
 use List::Util 1.29 qw( max pairgrep );
@@ -74,7 +75,7 @@ GetOptions(
       push @SYNAPSE_EXTRA_ARGS, @more;
    },
 
-   'output|o=s' => \(my $OUTPUT_PATH),
+   'output-dir|O=s' => \(my $OUTPUT_DIR),
 
    'h|help' => sub { usage(0) },
 ) or usage(1);
@@ -120,9 +121,6 @@ package SyLoad::Logger {
    sub diag { shift; print STDERR @_, "\n"; }
    sub progress { shift; print STDERR "\e[36m", @_, "\e[m\n"; }
 }
-
-my $OUTPUT;
-$OUTPUT = SyLoad::Output->open( $OUTPUT_PATH ) if defined $OUTPUT_PATH;
 
 my $loop = IO::Async::Loop->new;
 
@@ -313,6 +311,16 @@ sub test_at_rate
 {
    my ( $rate ) = @_;
 
+   my $output;
+   if( defined $OUTPUT_DIR ) {
+      -d $OUTPUT_DIR or make_path $OUTPUT_DIR;
+
+      $output = SyLoad::Output->open(
+         # TODO: configurable filename
+         File::Spec->catfile( $OUTPUT_DIR, sprintf "N%dk%dR%d.dat", $TEST_PARAMS{users}, $TEST_PARAMS{rooms}, $rate )
+      );
+   }
+
    $logger->progress( "Testing" );
    do_command( "RATE $rate" )->get;
 
@@ -326,7 +334,7 @@ sub test_at_rate
             do_command( "STATS" )
          })->then( sub {
             my ( $stats ) = @_;
-            $OUTPUT->write( $stats, time - $start ) if $OUTPUT;
+            $output->write( $stats, time - $start ) if $output;
             say "STATS: ", $stats;
 
             my %percentiles = map { m/^p(.*?)=(.*)$/ ? ( $1, $2 ) : () } split m/\s+/, $stats;
@@ -355,7 +363,7 @@ sub test_at_rate
 
    do_command( "RATE 0" )->get;
 
-   $OUTPUT->write( do_command( "STATS" )->get, time - $start ) if $OUTPUT;
+   $output->write( do_command( "STATS" )->get, time - $start ) if $output;
 
    say "Final STATS for rate=$rate: ", do_command( "ALLSTATS" )->get;
 }
