@@ -320,6 +320,9 @@ sub test_at_rate
          # TODO: configurable filename
          File::Spec->catfile( $OUTPUT_DIR, sprintf "N%dk%dR%d.dat", $TEST_PARAMS{users}, $TEST_PARAMS{rooms}, $rate )
       );
+
+      # Headings
+      $output->write( "# time", qw( total batch p10 p25 p50 p75 p90 p95 p99 ) );
    }
 
    $logger->progress( "Testing" );
@@ -327,6 +330,7 @@ sub test_at_rate
 
    my $start = time;
    my $failcount = 0;
+   my $cumulative_total = 0;
    Future->wait_any(
       $loop->delay_future( after => $TEST_PARAMS{duration} ),
 
@@ -335,12 +339,14 @@ sub test_at_rate
             do_command( "STATS" )
          })->then( sub {
             my ( $stats ) = @_;
-            $output->write( $stats, time - $start ) if $output;
             say "STATS: ", $stats;
 
-            my %percentiles = map { m/^p(.*?)=(.*)$/ ? ( $1, $2 ) : () } split m/\s+/, $stats;
+            my %fields = map { m/^(.*?)=(.*)$/ ? ( $1, $2 ) : () } split m/\s+/, $stats;
+            $cumulative_total += $fields{batch};
 
-            if( $percentiles{10} <= 1.0 ) {   ## also handles NaN
+            $output->write( time - $start, $cumulative_total, @fields{qw( batch p10 p25 p50 p75 p90 p95 p99 )} ) if $output;
+
+            if( $fields{p10} <= 1.0 ) {   ## also handles NaN
                $failcount = 0;
             }
             else {
@@ -364,7 +370,10 @@ sub test_at_rate
 
    do_command( "RATE 0" )->get;
 
-   $output->write( do_command( "STATS" )->get, time - $start ) if $output;
+   my %fields = map { m/^(.*?)=(.*)$/ ? ( $1, $2 ) : () } split m/\s+/, do_command( "STATS" )->get;
+   $cumulative_total += $fields{batch};
+
+   $output->write( time - $start, $cumulative_total, @fields{qw( batch p10 p25 p50 p75 p90 p95 p99 )} ) if $output;
 
    say "Final STATS for rate=$rate: ", do_command( "ALLSTATS" )->get;
 }
