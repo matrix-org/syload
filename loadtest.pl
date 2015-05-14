@@ -309,48 +309,55 @@ $logger->progress( "Warming up" );
    })
 } foreach => [ split m/,/, $TEST_PARAMS{warmup} ] )->get;
 
-$logger->progress( "Testing" );
-do_command( "RATE $TEST_PARAMS{rate}" )->get;
+sub test_at_rate
+{
+   my ( $rate ) = @_;
 
-my $start = time;
-my $failcount = 0;
-Future->wait_any(
-   $loop->delay_future( after => $TEST_PARAMS{duration} ),
+   $logger->progress( "Testing" );
+   do_command( "RATE $rate" )->get;
 
-   repeat {
-      $loop->delay_future( after => $TEST_PARAMS{stat_interval} )->then( sub {
-         do_command( "STATS" )
-      })->then( sub {
-         my ( $stats ) = @_;
-         $OUTPUT->write( $stats, time - $start ) if $OUTPUT;
-         say "STATS: ", $stats;
+   my $start = time;
+   my $failcount = 0;
+   Future->wait_any(
+      $loop->delay_future( after => $TEST_PARAMS{duration} ),
 
-         my %percentiles = map { m/^p(.*?)=(.*)$/ ? ( $1, $2 ) : () } split m/\s+/, $stats;
+      repeat {
+         $loop->delay_future( after => $TEST_PARAMS{stat_interval} )->then( sub {
+            do_command( "STATS" )
+         })->then( sub {
+            my ( $stats ) = @_;
+            $OUTPUT->write( $stats, time - $start ) if $OUTPUT;
+            say "STATS: ", $stats;
 
-         if( $percentiles{10} <= 1.0 ) {   ## also handles NaN
-            $failcount = 0;
-         }
-         else {
-            $failcount++;
-         }
+            my %percentiles = map { m/^p(.*?)=(.*)$/ ? ( $1, $2 ) : () } split m/\s+/, $stats;
 
-         return Future->fail( "E2E latency above 1000msec at p10 for 30sec; stopping test", ABORT => )
-            if $failcount >= 6;
+            if( $percentiles{10} <= 1.0 ) {   ## also handles NaN
+               $failcount = 0;
+            }
+            else {
+               $failcount++;
+            }
 
-         Future->done;
-      })
-   } while => sub { !shift->failure }
-)->else_with_f( sub {
-   my ( $f, $message, $name ) = @_;
-   if( $name and $name eq "ABORT" ) {
-      say $message;
-      return Future->done;
-   }
-   return $f;
-})->get;
+            return Future->fail( "E2E latency above 1000msec at p10 for 30sec; stopping test", ABORT => )
+               if $failcount >= 6;
 
-do_command( "RATE 0" )->get;
+            Future->done;
+         })
+      } while => sub { !shift->failure }
+   )->else_with_f( sub {
+      my ( $f, $message, $name ) = @_;
+      if( $name and $name eq "ABORT" ) {
+         say $message;
+         return Future->done;
+      }
+      return $f;
+   })->get;
 
-$OUTPUT->write( do_command( "STATS" )->get, time - $start ) if $OUTPUT;
+   do_command( "RATE 0" )->get;
 
-say "Final STATS for rate=$TEST_PARAMS{rate}: ", do_command( "ALLSTATS" )->get;
+   $OUTPUT->write( do_command( "STATS" )->get, time - $start ) if $OUTPUT;
+
+   say "Final STATS for rate=$rate: ", do_command( "ALLSTATS" )->get;
+}
+
+test_at_rate( $TEST_PARAMS{rate} );
