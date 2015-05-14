@@ -36,7 +36,7 @@ my %TEST_PARAMS = (
    users => 20,
    rooms => 20,
 
-   rate => 5,  # msg/sec
+   rates => [ 5 ],  # msg/sec
    duration => 120,  # seconds
 
    stat_interval => 5,  # seconds
@@ -53,7 +53,8 @@ GetOptions(
 
    'u|users=i'  => \$TEST_PARAMS{users},
    'k|rooms=i'  => \$TEST_PARAMS{rooms},
-   'rate=f'     => \$TEST_PARAMS{rate},
+   'rate=f'     => sub { $TEST_PARAMS{rates} = [ $_[1] ] }, ## LEGACY
+   'rates=s'    => sub { $TEST_PARAMS{rates} = [ split m/,/, $_[1] ] },
    'duration=i' => \$TEST_PARAMS{duration},
    'cooldown=i' => \(my $DEFAULT_COOLDOWN = 10), # seconds
    'stat-interval=i' => \$TEST_PARAMS{stat_interval},
@@ -368,4 +369,4 @@ sub test_at_rate
    say "Final STATS for rate=$rate: ", do_command( "ALLSTATS" )->get;
 }
 
-test_at_rate( $TEST_PARAMS{rate} );
+test_at_rate( $_) for @{ $TEST_PARAMS{rates} };
