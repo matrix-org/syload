@@ -6,7 +6,9 @@ use warnings;
 
 BEGIN {
    my $homelib = "$ENV{HOME}/lib/perl5";
-   unshift @INC, $homelib if -d $homelib;
+
+   require Config;
+   unshift @INC, "$homelib/$Config::Config{archname}", $homelib if -d $homelib;
 }
 
 use BSD::Resource qw( getrlimit setrlimit RLIMIT_NOFILE );
