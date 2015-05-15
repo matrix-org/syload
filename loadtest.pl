@@ -94,6 +94,8 @@ sub usage
 loadtest.pl: [options...]
 
 Options:
+   -c, --client-machine HOST    - host to ssh to for running client instances
+
    -S, --server-log             - enable pass-through of server logs
 
        --server-grep PATTERN    - additionally, filter the server passthrough
@@ -101,15 +103,29 @@ Options:
 
    -d, --synapse-directory DIR  - path to the checkout directory of synapse
 
-   -w, --wait-at-end            - pause for input before shutting down testing
-                                  synapse servers
+   -u, --users COUNT            - total number of users to create
+
+   -k, --rooms COUNT            - total number of rooms to create
+                                  Users will be distributed evenly among them
+
+   --rates RATE,RATE,RATE,...   - list of rates in msgs/sec to test
+
+   --duration SECS              - number of seconds to run for each rate
+
+   --warmup RATE:SECS,RATE:SECS,...
+                                - list of warmup rates and durations before
+                                  starting the first test
 
    -v, --verbose                - increase the verbosity of output and
                                   synapse's logging level
 
+   -n, --no-tls                 - use plain HTTP rather than HTTPS
+
        --python PATH            - path to the 'python' binary
 
    -ENAME,  -ENAME=VALUE        - pass extra argument NAME or NAME=VALUE
+
+   -O, --output-dir DIR         - directory path to write result files into
 
 EOF
 
