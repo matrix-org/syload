@@ -6,8 +6,8 @@ from simplescript import simplescript
 
 @simplescript
 def plot_loadtest(path, messages=False):
-    data = list(csv.reader(open(path)))
-    h = data[0]
+    data = list(l.split(" ") for l in open(path))
+    h = data[0][1:]
     data = array(list(map(float, l) for l in data[1:]))
     x_i = 1 if messages else 0
     for y_i in range(3, len(h)):
