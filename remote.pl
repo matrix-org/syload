@@ -117,6 +117,34 @@ sub on_read_line
       ->on_done( sub { $self->write( join( " ", "OK", @_ ) . "\n" ) } );
 }
 
+sub set_pusher
+{
+   my $self = shift;
+   my $profile_tag = shift;
+   my $kind = shift;
+   my $app_id = shift;
+   my $app_display_name = shift;
+   my $device_display_name = shift;
+   my $pushkey = shift;
+   my $lang = shift;
+   my $data = shift;
+   #my ( $name ) = @_;
+
+   return $self->_do_POST_json( "/pushers/set",
+      {
+         profile_tag => $profile_tag,
+         kind => $kind,
+         app_id => $app_id,
+         app_display_name => $app_display_name,
+         device_display_name => $device_display_name,
+         pushkey => $pushkey,
+         lang => $lang,
+         data => $data
+      }
+   );
+}
+
+
 sub do_MKUSERS
 {
    my $self = shift;
@@ -157,7 +185,17 @@ sub do_MKUSERS
          password => $password,
       )->on_done( sub {
          $matrix->stop;
-         $self->progress( "Created $uid" )
+
+         $self->progress( "Adding pusher for $uid" );
+
+         my $testpk = "pk".$uid;
+
+         set_pusher(
+            $matrix, "tag", "http", "syload", "syload", "syload", $testpk, "en", {
+                "url" => "http://localhost:5000/$uid"
+            })->on_done( sub {
+                $self->progress( "Created $uid" )
+            });
       });
    } foreach => [ 0 .. $count-1 ],
      concurrent => 10;
