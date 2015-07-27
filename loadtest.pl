@@ -191,6 +191,8 @@ foreach my $idx ( 0 .. $#PORTS ) {
       extra_args    => [ @extra_args ],
       python        => $PYTHON,
       ( @SERVER_FILTER ? ( filter_output => \@SERVER_FILTER ) : () ),
+
+      config => {},
    );
    $loop->add( $synapse );
 
