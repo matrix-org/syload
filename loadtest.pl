@@ -63,7 +63,7 @@ GetOptions(
 
    'v|verbose+' => \(my $VERBOSE = 0),
 
-   'n|no-tls' => \my $NO_SSL,
+   'n|no-tls' => \my $NO_TLS,
 
    'python=s' => \(my $PYTHON = "python"),
 
@@ -177,17 +177,19 @@ sub extract_extra_args
 my @PORTS = ( 8001 );
 my @f;
 foreach my $idx ( 0 .. $#PORTS ) {
-   my $port = $PORTS[$idx];
+   my $secure_port = $PORTS[$idx];
+   my $unsecure_port = ( !$NO_TLS ) ? 0 : $secure_port + 1000;
+
    my @extra_args = extract_extra_args( $idx, \@SYNAPSE_EXTRA_ARGS );
 
-   my $synapse = $synapses_by_port{$port} = SyTest::Synapse->new(
-      synapse_dir  => $SYNAPSE_DIR,
-      port         => $port,
-      output       => $logger,
-      print_output => $SERVER_LOG,
-      extra_args   => [ @extra_args ],
-      python       => $PYTHON,
-      no_ssl       => $NO_SSL,
+   my $synapse = $synapses_by_port{$secure_port} = SyTest::Synapse->new(
+      synapse_dir   => $SYNAPSE_DIR,
+      port          => $secure_port,
+      unsecure_port => $unsecure_port,
+      output        => $logger,
+      print_output  => $SERVER_LOG,
+      extra_args    => [ @extra_args ],
+      python        => $PYTHON,
       ( @SERVER_FILTER ? ( filter_output => \@SERVER_FILTER ) : () ),
    );
    $loop->add( $synapse );
@@ -196,7 +198,7 @@ foreach my $idx ( 0 .. $#PORTS ) {
       $synapse->started_future,
 
       $loop->delay_future( after => 20 )
-         ->then_fail( "Synapse server on port $port failed to start" ),
+         ->then_fail( "Synapse server on port $secure_port failed to start" ),
    );
 }
 
@@ -236,8 +238,8 @@ my $servername = ( $CLIENT_MACHINE eq "localhost" ) ? "localhost" : hostname();
 my @client_cmdfutures;
 my $clientctl = IO::Async::Process->new(
    command => [ 'ssh', $CLIENT_MACHINE, 'perl', '-',
-      '--server' => $servername . ":" . ( $PORTS[0] + ( $NO_SSL ? 1000 : 0 ) ),
-      ( $NO_SSL ? ( "--no-ssl" ) : () ),
+      '--server' => $servername . ":" . ( $PORTS[0] + ( $NO_TLS ? 1000 : 0 ) ),
+      ( $NO_TLS ? ( "--no-ssl" ) : () ),
       # '-v',
    ],
 
