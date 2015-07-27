@@ -200,9 +200,13 @@ foreach my $idx ( 0 .. $#PORTS ) {
       $loop->delay_future( after => 20 )
          ->then_fail( "Synapse server on port $secure_port failed to start" ),
    );
+
+   $synapse->start;
 }
 
+print STDERR "Starting synapse... ";
 Future->needs_all( @f )->get;
+print STDERR "done\n";
 
 # Now the synapses are started there's no need to keep watching the logfiles
 $_->close_logfile for values %synapses_by_port;
